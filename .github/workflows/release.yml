@@ -105,10 +105,12 @@ jobs:
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
+          set -o pipefail
           ./gradlew --no-daemon --stacktrace \
             assembleRelease bundleRelease \
             -PappVersionName="${{ steps.version.outputs.name }}" \
-            -PappVersionCode="${{ steps.version.outputs.code }}"
+            -PappVersionCode="${{ steps.version.outputs.code }}" \
+            2>&1 | tee -a "$RUNNER_TEMP/build.log"
 
       # 签名必须真正校验过，否则用户装到手机上才发现「无法安装」就太晚了
       - name: 校验 APK 签名
@@ -153,3 +155,39 @@ jobs:
           prerelease: ${{ steps.version.outputs.prerelease }}
           generate_release_notes: true
           files: dist/*
+
+      # 与 ci.yml 同样的机制：Actions 日志未认证无法下载（需管理员权限），
+      # 失败时把错误摘要回传到 commit comment，该接口公开可读。
+      - name: 失败时回传错误摘要
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          LOG="$RUNNER_TEMP/build.log"
+          {
+            echo "### 发布流水线失败"
+            echo
+            echo "- 版本：\`${{ steps.version.outputs.name }}\`（versionCode ${{ steps.version.outputs.code }}）"
+            echo "- 触发：${{ github.event_name }} / ${{ github.ref_name }}"
+            echo "- 失败步骤请见 Actions 页面；以下为 Gradle 输出摘要"
+            echo
+            if [ -f "$LOG" ]; then
+              echo '```text'
+              grep -nE "What went wrong|FAILURE:|Caused by:|^e: |error:|Unresolved reference|Could not (find|resolve|determine|create)|> Task .* FAILED|Execution failed|Keystore|keystore" "$LOG" \
+                | head -80 || true
+              echo '```'
+              echo
+              echo "### 输出最后 100 行"
+              echo
+              echo '```text'
+              tail -100 "$LOG"
+              echo '```'
+            else
+              echo "未捕获到 Gradle 输出（可能在 Gradle 之前的步骤就失败了）。"
+            fi
+          } > "$RUNNER_TEMP/body.md"
+          gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/comments" \
+            -F body=@"$RUNNER_TEMP/body.md" \
+            && echo "错误摘要已回传" \
+            || echo "回传失败（不影响构建结论）"
