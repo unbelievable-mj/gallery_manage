@@ -1,10 +1,28 @@
 package com.haoli.swipegallery.core.common
 
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 private const val BYTES_PER_KB = 1024.0
 private const val BYTES_PER_MB = BYTES_PER_KB * 1024
 private const val BYTES_PER_GB = BYTES_PER_MB * 1024
+
+private val DATE_TIME_FORMATTER: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.US)
+
+/**
+ * 把毫秒时间戳格式化成 `yyyy-MM-dd HH:mm`。
+ *
+ * 查看器底部信息栏用它显示拍摄/创建时间。
+ * 用 `java.time` 而非 `SimpleDateFormat`：后者不是线程安全的，
+ * 而这里会被 Compose 在任意线程上调用。
+ */
+fun formatDateTime(epochMillis: Long): String =
+    Instant.ofEpochMilli(epochMillis)
+        .atZone(ZoneId.systemDefault())
+        .format(DATE_TIME_FORMATTER)
 
 /**
  * 把字节数格式化成人类可读的字符串。

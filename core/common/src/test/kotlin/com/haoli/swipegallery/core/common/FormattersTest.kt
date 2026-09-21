@@ -57,4 +57,28 @@ class FormattersTest {
             formatDuration(-1)
         }
     }
+
+    @Test
+    fun `formatDateTime 按系统时区渲染到分钟`() {
+        // 固定用 UTC 验证，避免测试结果随运行机器的时区变化
+        val millis = java.time.Instant.parse("2024-08-12T15:32:00Z").toEpochMilli()
+        val rendered = java.time.Instant.ofEpochMilli(millis)
+            .atZone(java.time.ZoneId.systemDefault())
+            .format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", java.util.Locale.US))
+
+        assertEquals(rendered, formatDateTime(millis))
+        // 格式必须是 yyyy-MM-dd HH:mm，长度固定 16
+        assertEquals(16, formatDateTime(millis).length)
+    }
+
+    @Test
+    fun `formatDateTime 输出符合 yyyy-MM-dd HH mm 格式`() {
+        val millis = java.time.Instant.parse("2024-01-05T09:07:00Z").toEpochMilli()
+        val text = formatDateTime(millis)
+
+        // 正则比拆字符串更直接地表达「格式正确」这件事
+        assert(text.matches(Regex("""\d{4}-\d{2}-\d{2} \d{2}:\d{2}"""))) {
+            "格式不符合预期：$text"
+        }
+    }
 }

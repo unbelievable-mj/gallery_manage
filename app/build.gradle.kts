@@ -94,6 +94,8 @@ dependencies {
     implementation(project(":core:common"))
     implementation(project(":core:designsystem"))
     implementation(project(":core:data"))
+    implementation(project(":feature:gallery"))
+    implementation(project(":feature:viewer"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

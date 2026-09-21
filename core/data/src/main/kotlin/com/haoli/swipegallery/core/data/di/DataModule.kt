@@ -1,7 +1,7 @@
 package com.haoli.swipegallery.core.data.di
 
 import com.haoli.swipegallery.core.data.MediaRepository
-import com.haoli.swipegallery.core.data.StubMediaRepository
+import com.haoli.swipegallery.core.data.MediaStoreMediaRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -18,5 +18,5 @@ abstract class DataModule {
 
     @Binds
     @Singleton
-    abstract fun bindMediaRepository(impl: StubMediaRepository): MediaRepository
+    abstract fun bindMediaRepository(impl: MediaStoreMediaRepository): MediaRepository
 }

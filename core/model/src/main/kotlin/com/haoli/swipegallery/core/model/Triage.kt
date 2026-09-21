@@ -1,10 +1,10 @@
 package com.haoli.swipegallery.core.model
 
-/** 排序字段。用户可在设置里自选，排序结果决定滑卡队列的顺序。 */
+/** 排序字段。用户可在首屏切换，排序结果决定滑卡队列的顺序。 */
 enum class SortField(val label: String) {
     DATE_TAKEN("拍摄时间"),
     DATE_MODIFIED("修改时间"),
-    SIZE("文件占用空间"),
+    SIZE("文件大小"),
     DISPLAY_NAME("文件名"),
     DURATION("视频时长"),
 }
@@ -27,43 +27,41 @@ sealed interface TriageScope {
     data class MinSize(val thresholdBytes: Long) : TriageScope
 }
 
-/** 下滑「保留」时文件的落点。默认保留在原相册，即文件零改动。 */
+/**
+ * 下滑「保留」时文件的落点。
+ *
+ * 默认 [ORIGINAL_ALBUM] —— 文件零改动，仅从本次队列移除。
+ * 这是「上滑删、下滑留」这套纯二选一语义能成立的关键：
+ * 保留下来的文件不产生任何副作用，用户不必为「留」这件事承担风险。
+ */
 enum class KeepTarget(val label: String) {
-    /** 仅从本次队列移除，文件完全不动 */
     ORIGINAL_ALBUM("保留在原相册"),
-    /** 修改 RELATIVE_PATH 移动到指定相册 */
     SPECIFIC_ALBUM("移动到指定相册"),
-    /** 通过 SAF 复制到用户选定的目录，原文件保留 */
     SAF_DIRECTORY("复制到自选目录"),
-    /** 标记为收藏 */
     FAVORITE("标记为收藏"),
 }
 
 /**
  * 一次滑卡决策的记录。
  *
- * 这是撤销能力的载体：所有决策都进入操作栈，
- * 撤销即反向执行栈顶记录。
+ * 携带 [MediaItem] 与 [originalIndex] 而非仅 id：撤销时要把它放回队列的原始位置，
+ * 只留 id 的话还得额外维护一张 id → 位置的反查表。
  */
 sealed interface TriageAction {
-    val itemId: Long
+    val item: MediaItem
+    val originalIndex: Int
     val timestampMillis: Long
 
     data class Deleted(
-        override val itemId: Long,
+        override val item: MediaItem,
+        override val originalIndex: Int,
         override val timestampMillis: Long,
     ) : TriageAction
 
     data class Kept(
-        override val itemId: Long,
+        override val item: MediaItem,
+        override val originalIndex: Int,
         override val timestampMillis: Long,
-        val target: KeepTarget,
-    ) : TriageAction
-
-    data class Moved(
-        override val itemId: Long,
-        override val timestampMillis: Long,
-        val fromAlbum: String,
-        val toAlbum: String,
+        val target: KeepTarget = KeepTarget.ORIGINAL_ALBUM,
     ) : TriageAction
 }
