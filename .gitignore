@@ -1,0 +1,36 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Android Studio / IntelliJ
+*.iml
+.idea/
+captures/
+.externalNativeBuild/
+.cxx/
+local.properties
+
+# 签名密钥 —— 绝对不要提交
+*.jks
+*.keystore
+*.p12
+keystore/
+/app/release_key.jks
+
+# 构建产物
+dist/
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# AI 助手的工作记录，不属于项目源码
+.workbuddy-ai/
+
+# 日志
+*.log

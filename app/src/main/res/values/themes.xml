@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      纯 Compose 应用，这里只需要一个不带 ActionBar 的宿主主题。
+      使用平台自带的 Material 主题，避免引入 Material Components 依赖。
+      真正的配色由 core:designsystem 里的 SwipeGalleryTheme 负责。
+    -->
+    <style name="Theme.SwipeGallery" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
+</resources>

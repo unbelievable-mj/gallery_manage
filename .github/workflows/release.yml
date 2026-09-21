@@ -1,0 +1,145 @@
+name: Release
+
+# 推送 v* 标签即自动构建签名包并发布到 GitHub Release。
+# 手机端可以直接打开 https://github.com/<owner>/swipe-gallery/releases/latest 下载 APK。
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '手动触发的版本号，例如 0.1.0'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    name: 构建签名包并发布
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # versionCode 用 run_number 保证单调递增：Android 只允许用更大或相等的
+      # versionCode 覆盖安装，回退会让用户装不上新版。
+      - name: 解析版本号
+        id: version
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            RAW="${GITHUB_REF_NAME}"
+          else
+            RAW="${{ github.event.inputs.version }}"
+          fi
+          VERSION="${RAW#v}"
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "::error::版本号格式不正确：$RAW（期望 v1.2.3 或 1.2.3）"
+            exit 1
+          fi
+          case "$VERSION" in
+            *-*) PRERELEASE=true ;;
+            *)   PRERELEASE=false ;;
+          esac
+          {
+            echo "name=$VERSION"
+            echo "code=${GITHUB_RUN_NUMBER}"
+            echo "prerelease=$PRERELEASE"
+          } >> "$GITHUB_OUTPUT"
+          echo "版本 $VERSION / versionCode=${GITHUB_RUN_NUMBER} / prerelease=$PRERELEASE"
+
+      - name: 安装 JDK 21
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: 配置 Gradle 缓存
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: 配置 Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: 安装 SDK 组件
+        run: sdkmanager --install "platforms;android-37" "build-tools;36.0.0"
+
+      # keystore 以 base64 存在 Secret 中，构建前解码到临时目录，
+      # 跑完由 runner 自动销毁，不会进入任何缓存或产物。
+      - name: 还原签名密钥
+        env:
+          KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
+            echo "::error::缺少 Secret SIGNING_KEYSTORE_BASE64，无法签名。请参考 README 完成配置。"
+            exit 1
+          fi
+          KEYSTORE_PATH="$RUNNER_TEMP/release.p12"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          echo "SIGNING_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+
+      - name: 构建 release 包
+        env:
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: |
+          ./gradlew --no-daemon --stacktrace \
+            assembleRelease bundleRelease \
+            -PappVersionName="${{ steps.version.outputs.name }}" \
+            -PappVersionCode="${{ steps.version.outputs.code }}"
+
+      # 签名必须真正校验过，否则用户装到手机上才发现「无法安装」就太晚了
+      - name: 校验 APK 签名
+        run: |
+          set -euo pipefail
+          APK=$(find app/build/outputs/apk/release -name '*.apk' -type f | head -n 1)
+          if [ -z "$APK" ]; then
+            echo "::error::未找到 release APK"
+            exit 1
+          fi
+          APKSIGNER=$(find "${ANDROID_HOME}/build-tools" -name apksigner -type f | sort | tail -n 1)
+          echo "使用 $APKSIGNER 校验 $APK"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+
+      - name: 整理产物
+        run: |
+          set -euo pipefail
+          V="${{ steps.version.outputs.name }}"
+          mkdir -p dist
+          find app/build/outputs/apk/release -name '*.apk' -type f \
+            -exec cp {} "dist/SwipeGallery-v${V}.apk" \;
+          find app/build/outputs/bundle/release -name '*.aab' -type f \
+            -exec cp {} "dist/SwipeGallery-v${V}.aab" \;
+          MAP=$(find app/build/outputs/mapping/release -name 'mapping.txt' -type f | head -n 1 || true)
+          if [ -n "${MAP:-}" ]; then
+            cp "$MAP" "dist/mapping-v${V}.txt"
+          fi
+          ls -lh dist
+
+      - name: 生成校验和
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum ./* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: 发布到 GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          name: SwipeGallery v${{ steps.version.outputs.name }}
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', steps.version.outputs.name) }}
+          prerelease: ${{ steps.version.outputs.prerelease }}
+          generate_release_notes: true
+          files: dist/*
