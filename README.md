@@ -32,7 +32,7 @@ https://github.com/unbelievable-mj/gallery_manage/releases/latest
 | 视频 | Media3 ExoPlayer 1.11.0 |
 | 图片加载 | Coil 3.6.3 |
 | 后台任务 | WorkManager 2.11.2 |
-| SDK | minSdk 30 / targetSdk 37 / compileSdk 37 |
+| SDK | minSdk 30 / targetSdk 36 / compileSdk 36 |
 
 ### 关于版本锁定
 
@@ -42,6 +42,9 @@ https://github.com/unbelievable-mj/gallery_manage/releases/latest
 - Compose 编译器仍需独立的 `org.jetbrains.kotlin.plugin.compose` 插件，版本与 Kotlin 版本一致。
 - **KSP 已改为独立版本线**（`2.3.x`），不再使用 `2.4.10-2.0.x` 这种与 Kotlin 绑定的编号。
 - `kotlinOptions` 已废弃，改用顶层 `kotlin { compilerOptions { ... } }` 块。
+- **API 37 起 Android SDK 改用带小版本号的命名**：仓库里只有 `platforms;android-37.0` /
+  `37.1` / `37.2`，**不存在**裸的 `platforms;android-37`。因此本项目固定在
+  `compileSdk = 36`，这是当前确定可用的稳定包。
 
 ---
 

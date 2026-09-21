@@ -19,12 +19,12 @@ val releaseKeystore = System.getenv("SIGNING_KEYSTORE_PATH")
 
 android {
     namespace = "com.haoli.swipegallery"
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.haoli.swipegallery"
         minSdk = 30
-        targetSdk = 37
+        targetSdk = 36
         versionCode = appVersionCode
         versionName = appVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

@@ -36,8 +36,13 @@ jobs:
       - name: 配置 Android SDK
         uses: android-actions/setup-android@v4
 
+      # 注意：API 37 起 Android SDK 改为带小版本号的命名（android-37.0 / 37.1 / 37.2），
+      # 不存在裸的 platforms;android-37。此处固定在 android-36，是当前确定可用的稳定包。
       - name: 安装 SDK 组件
-        run: sdkmanager --install "platforms;android-37" "build-tools;36.0.0"
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
 
       - name: 单元测试
         run: ./gradlew --no-daemon testDebugUnitTest
