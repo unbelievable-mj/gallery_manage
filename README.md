@@ -149,13 +149,13 @@ git push origin v0.1.0
 ./gradlew assembleRelease -PappVersionName=0.1.0 -PappVersionCode=1
 ```
 
-带正式签名的本地构建：
+带正式签名的本地构建（凭据从 keystore/keystore.properties 读取，无需手输口令）：
 
 ```bash
 export SIGNING_KEYSTORE_PATH="$PWD/keystore/release.p12"
-export SIGNING_STORE_PASSWORD="SwipeGallery2026Release"
-export SIGNING_KEY_ALIAS="swipegallery"
-export SIGNING_KEY_PASSWORD="SwipeGallery2026Release"
+export SIGNING_STORE_PASSWORD="$(grep -E '^storePassword=' keystore/keystore.properties | cut -d= -f2-)"
+export SIGNING_KEY_ALIAS="$(grep -E '^keyAlias=' keystore/keystore.properties | cut -d= -f2-)"
+export SIGNING_KEY_PASSWORD="$SIGNING_STORE_PASSWORD"
 ./gradlew assembleRelease -PappVersionName=0.1.0 -PappVersionCode=1
 ```
 
