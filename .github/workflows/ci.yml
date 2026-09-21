@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write # 失败时需要在 commit 上回传错误摘要
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -45,7 +45,9 @@ jobs:
           sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
 
       - name: 单元测试
-        run: ./gradlew --no-daemon testDebugUnitTest
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace testDebugUnitTest 2>&1 | tee -a "$RUNNER_TEMP/gradle.log"
 
       - name: 上传测试报告
         if: always()
@@ -57,7 +59,9 @@ jobs:
           retention-days: 7
 
       - name: Android Lint
-        run: ./gradlew --no-daemon lintDebug
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace lintDebug 2>&1 | tee -a "$RUNNER_TEMP/gradle.log"
 
       - name: 上传 Lint 报告
         if: always()
@@ -73,12 +77,15 @@ jobs:
       # 而不是等到打 tag 发版时才炸。此处无签名密钥，会回退到 debug 签名。
       - name: 构建 release 变体（验证 R8）
         run: |
-          ./gradlew --no-daemon assembleRelease \
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace assembleRelease \
             -PappVersionName=0.0.0-ci \
-            -PappVersionCode=1
+            -PappVersionCode=1 2>&1 | tee -a "$RUNNER_TEMP/gradle.log"
 
       - name: 构建 debug 包
-        run: ./gradlew --no-daemon assembleDebug
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --stacktrace assembleDebug 2>&1 | tee -a "$RUNNER_TEMP/gradle.log"
 
       - name: 上传 debug APK
         uses: actions/upload-artifact@v7
@@ -87,3 +94,35 @@ jobs:
           path: 'app/build/outputs/apk/debug/*.apk'
           if-no-files-found: error
           retention-days: 14
+
+      # Actions 日志在未认证状态下无法下载（需管理员权限），
+      # 因此失败时把错误摘要回传到 commit comment，便于在本地直接读取定位。
+      - name: 失败时回传错误摘要
+        if: failure() && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          LOG="$RUNNER_TEMP/gradle.log"
+          if [ ! -f "$LOG" ]; then
+            echo "未捕获到 Gradle 输出"
+            exit 0
+          fi
+          {
+            echo "### Gradle 失败关键行"
+            echo
+            echo '```text'
+            grep -nE "What went wrong|FAILURE:|Caused by:|^e: |error:|Unresolved reference|Could not (find|resolve|determine|create)|> Task .* FAILED|Execution failed" "$LOG" \
+              | head -100 || true
+            echo '```'
+            echo
+            echo "### 输出最后 120 行"
+            echo
+            echo '```text'
+            tail -120 "$LOG"
+            echo '```'
+          } > "$RUNNER_TEMP/body.md"
+          gh api "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/comments" \
+            -F body=@"$RUNNER_TEMP/body.md" \
+            && echo "错误摘要已回传" \
+            || echo "回传失败（不影响构建结论）"
