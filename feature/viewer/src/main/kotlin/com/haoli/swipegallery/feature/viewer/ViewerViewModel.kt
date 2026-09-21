@@ -7,6 +7,7 @@ import com.haoli.swipegallery.core.data.MediaRepository
 import com.haoli.swipegallery.core.model.MediaItem
 import com.haoli.swipegallery.core.model.TriageAction
 import com.haoli.swipegallery.core.model.TriageProgress
+import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,16 +18,23 @@ import kotlinx.coroutines.flow.update
 enum class SwipeDirection { UP, DOWN }
 
 data class ViewerUiState(
+    /**
+     * 是否已经注入过队列。
+     *
+     * 没有这个标志的话，首帧 items 为空会被判成「处理完了」，
+     * 用户点开图片会先闪一下结束页再出现照片。
+     */
+    val started: Boolean = false,
     /** 当前队列。已决策的项会被移出，因此它的长度就是「剩余」。 */
     val items: List<MediaItem> = emptyList(),
     val currentIndex: Int = 0,
     val progress: TriageProgress = TriageProgress(0, 0, 0, 0),
     val canUndo: Boolean = false,
-    /** 最近一次操作提示，用于底部 Snackbar 文案。 */
+    /** 最近一次操作提示，用于顶部文案。 */
     val lastActionLabel: String? = null,
 ) {
     val current: MediaItem? get() = items.getOrNull(currentIndex)
-    val isFinished: Boolean get() = items.isEmpty()
+    val isFinished: Boolean get() = started && items.isEmpty()
 }
 
 /**
@@ -38,6 +46,7 @@ data class ViewerUiState(
  *
  * 直接删盘的话，「滑走即可撤回」这条需求根本无法实现 —— 系统删除是不可逆的。
  */
+@HiltViewModel
 class ViewerViewModel @Inject constructor(
     private val repository: MediaRepository,
 ) : ViewModel() {
@@ -63,6 +72,7 @@ class ViewerViewModel @Inject constructor(
         keptCount = 0
 
         _state.value = ViewerUiState(
+            started = true,
             items = items,
             currentIndex = startIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0)),
             progress = TriageProgress.of(items.size, 0, 0),

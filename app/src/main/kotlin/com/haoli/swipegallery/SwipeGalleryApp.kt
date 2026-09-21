@@ -19,5 +19,8 @@ class SwipeGalleryApp : Application() {
         if (BuildConfig.DEBUG) {
             Timber.plant(Timber.DebugTree())
         }
+
+        // 本机没有 adb，崩溃后拿不到 logcat，只能靠把堆栈落盘再回看
+        installCrashLogger(this)
     }
 }

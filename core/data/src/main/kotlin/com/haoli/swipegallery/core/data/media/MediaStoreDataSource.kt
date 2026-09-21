@@ -66,13 +66,19 @@ class MediaStoreDataSource @Inject constructor(
                     uri = ContentUris.withAppendedId(collectionFor(kind), id).toString(),
                     displayName = if (nameIdx >= 0) cursor.getString(nameIdx).orEmpty() else "",
                     kind = kind,
-                    sizeBytes = if (sizeIdx >= 0) cursor.getLong(sizeIdx) else 0L,
+                    // 夹到非负：格式化函数对负数会抛异常，而 MediaStore 在某些异常状态下
+                    // 确实可能返回负值，不该让展示层为此崩溃
+                    sizeBytes = if (sizeIdx >= 0) cursor.getLong(sizeIdx).coerceAtLeast(0L) else 0L,
                     // MediaStore 用秒，统一转成毫秒；0 视为缺失
                     dateTakenMillis = dateTakenSeconds.takeIf { it > 0L }?.times(1000L),
                     dateAddedMillis = dateAddedSeconds * 1000L,
                     width = if (widthIdx >= 0) cursor.getInt(widthIdx) else 0,
                     height = if (heightIdx >= 0) cursor.getInt(heightIdx) else 0,
-                    durationMillis = if (durationIdx >= 0) cursor.getLong(durationIdx) else null,
+                    durationMillis = if (durationIdx >= 0) {
+                        cursor.getLong(durationIdx).coerceAtLeast(0L)
+                    } else {
+                        null
+                    },
                     albumId = if (bucketIdIdx >= 0) cursor.getLong(bucketIdIdx) else 0L,
                     albumName = if (bucketNameIdx >= 0) cursor.getString(bucketNameIdx).orEmpty() else "",
                     relativePath = if (relativePathIdx >= 0) cursor.getString(relativePathIdx) else null,

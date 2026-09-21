@@ -11,6 +11,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haoli.swipegallery.core.designsystem.theme.SwipeGalleryTheme
@@ -51,6 +52,22 @@ class MainActivity : ComponentActivity() {
  */
 @Composable
 private fun SwipeGalleryHost() {
+    val context = LocalContext.current
+    var crashReport by remember { mutableStateOf(readCrashReport(context)) }
+
+    val report = crashReport
+    if (report != null) {
+        // 上次是异常退出。先把堆栈摆到用户面前，否则无从定位。
+        CrashScreen(
+            report = report,
+            onDismiss = {
+                clearCrashReport(context)
+                crashReport = null
+            },
+        )
+        return
+    }
+
     val galleryViewModel: GalleryViewModel = viewModel()
     val galleryState by galleryViewModel.state.collectAsStateWithLifecycle()
 

@@ -136,7 +136,10 @@ fun ViewerScreen(
             )
 
             Box(modifier = Modifier.weight(1f)) {
-                if (state.isFinished) {
+                if (!state.started) {
+                    // 队列注入前的空白帧。不能落进下面的 isFinished 分支，
+                    // 否则点开图片会先闪一下「处理完了」。
+                } else if (state.isFinished) {
                     FinishedState(progress = state.progress, onClose = onClose)
                 } else {
                     TriagePager(
@@ -172,14 +175,17 @@ private fun TriagePager(
     HorizontalPager(
         state = pagerState,
         modifier = Modifier.fillMaxSize(),
-        key = { index -> items[index].id },
     ) { page ->
+        // 不用自定义 key：删除后列表会缩短，而 Pager 仍可能按旧下标取 key，
+        // items[page] 会越界崩溃；用 key 还会让 Pager 误以为页面发生了位移而动画跳转。
+        // 单页的状态由 ViewerPage 内部按 uri 记忆，不依赖 Pager 的 key。
+        val item = items.getOrNull(page) ?: return@HorizontalPager
         SwipeableCard(
             onSwipe = onSwipe,
             modifier = Modifier.fillMaxSize(),
         ) {
             ViewerPage(
-                item = items[page],
+                item = item,
                 onLoadFullImage = onLoadFullImage,
             )
         }
