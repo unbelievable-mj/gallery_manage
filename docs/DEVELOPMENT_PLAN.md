@@ -4,7 +4,7 @@
 > 日期：2026-09-21
 > 目标平台：Android 11+（API 30）
 > 开发目录：`/Users/haoli/Desktop/work/Code/projects/gallery-manage`
-> 仓库：`swipe-gallery`（Public）· 应用名「滑图」· 包名 `com.haoli.swipegallery`
+> 仓库：`gallery_manage`（Public）· 应用名「滑图」· 包名 `com.haoli.swipegallery`
 
 ---
 
@@ -533,7 +533,7 @@ benchmark-macro-junit4       = { module = "androidx.benchmark:benchmark-macro-ju
 | # | 决策点 | 结论 |
 | --- | --- | --- |
 | 5 | 发布渠道 | **仅 GitHub Release**。手机直接访问 `releases/latest` 下载 APK 安装，不走 Google Play |
-| 6 | App 名称与包名 | **滑图 / SwipeGallery**，包名 `com.haoli.swipegallery`，仓库名 `swipe-gallery` |
+| 6 | App 名称与包名 | **滑图 / SwipeGallery**，包名 `com.haoli.swipegallery`，仓库名 `gallery_manage`（账号 `unbelievable-mj`） |
 | 7 | 仓库可见性 | **Public** —— Actions 分钟数不限，且手机端下载 Release 无需登录 GitHub |
 | 8 | 本地构建环境 | 不在本地安装 Android SDK，构建验证完全交给 CI |
 
@@ -602,20 +602,16 @@ benchmark-macro-junit4       = { module = "androidx.benchmark:benchmark-macro-ju
 
 ## 10. 下一步
 
-M0 剩余动作（需要你在本机执行，因为涉及你的 GitHub 账号）：
+M0 收尾动作：
 
-1. 配置 git 身份并提交：
-   ```bash
-   git config user.name "你的名字"
-   git config user.email "你的邮箱"
-   git commit -m "chore: M0 项目骨架与 CI/CD"
-   ```
-2. 在 GitHub 新建 **Public** 仓库 `swipe-gallery`（不要勾选任何初始化文件）。
-3. 推送：`git remote add origin <仓库地址> && git push -u origin main`
-4. 按 README 配置 4 个签名 Secret。
-5. 打标签触发首次发版：`git tag v0.1.0 && git push origin v0.1.0`
-6. 观察 Actions 是否全绿。若失败，按 §9.4 的顺序排查。
+- [x] 本地提交（`5f084c0`，43 个文件）
+- [x] 在 GitHub 创建 Public 仓库 `unbelievable-mj/gallery_manage`
+- [x] 配置远程地址（`git@github-mj:unbelievable-mj/gallery_manage.git`）
+- [ ] 推送 `main` 分支
+- [ ] 按 README 配置 4 个签名 Secret
+- [ ] 打标签触发首次发版：`git tag v0.1.0 && git push origin v0.1.0`
+- [ ] 观察 Actions 是否全绿。若失败，按 §9.4 的顺序排查
 
-M0 验收标准：**手机上能打开 `releases/latest`，下载并成功安装 APK，打开后看到版本号与构建类型。**
+M0 验收标准：**手机上能打开 `https://github.com/unbelievable-mj/gallery_manage/releases/latest`，下载并成功安装 APK，打开后看到版本号与构建类型。**
 
 之后进入 M1：接入 MediaStore，读取真实媒体库并渲染网格。

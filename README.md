@@ -11,7 +11,7 @@
 打开发布页，下载最新的 `SwipeGallery-v*.apk` 直接安装：
 
 ```
-https://github.com/<你的用户名>/swipe-gallery/releases/latest
+https://github.com/unbelievable-mj/gallery_manage/releases/latest
 ```
 
 首次安装需要在系统设置里允许「安装未知来源应用」。每个版本的 `versionCode` 由 CI 单调递增，新版本可以直接覆盖安装。
@@ -122,12 +122,11 @@ gallery-manage/
 
 ### 3. 推送并发布
 
+> **本机注意**：`~/.ssh` 里有两把密钥，默认的 `id_ed25519` 认证出来是另一个账号 `31413Hao`。
+> 因此远程地址用的是 `github-mj` 别名（在 `~/.ssh/config` 中指向 `id_ed25519_mj`）。
+> 如果换成 `git@github.com:...` 会以错误身份提交。
+
 ```bash
-git init
-git add .
-git commit -m "chore: M0 项目骨架与 CI/CD"
-git branch -M main
-git remote add origin git@github.com:<你的用户名>/swipe-gallery.git
 git push -u origin main
 
 # 打标签即自动发版
