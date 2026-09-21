@@ -71,13 +71,18 @@ jobs:
       - name: 配置 Android SDK
         uses: android-actions/setup-android@v4
 
-      # 注意：API 37 起 Android SDK 改为带小版本号的命名（android-37.0 / 37.1 / 37.2），
-      # 不存在裸的 platforms;android-37。此处固定在 android-36，是当前确定可用的稳定包。
+      # API 37 起 Android SDK 按小版本命名，仓库中只有 platforms;android-37.0 / 37.1 / 37.2，
+      # 不存在裸的 platforms;android-37。三个小版本全部安装以消除 AGP 解析歧义。
       - name: 安装 SDK 组件
         run: |
           set -euo pipefail
           yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+          sdkmanager --install \
+            "platforms;android-37.0" \
+            "platforms;android-37.1" \
+            "platforms;android-37.2" \
+            "build-tools;36.0.0" \
+            "build-tools;37.0.0"
 
       # keystore 以 base64 存在 Secret 中，构建前解码到临时目录，
       # 跑完由 runner 自动销毁，不会进入任何缓存或产物。

@@ -4,7 +4,7 @@ plugins {
 
 android {
     namespace = "com.haoli.swipegallery.core.model"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 30

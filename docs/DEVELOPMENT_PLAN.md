@@ -88,8 +88,9 @@
 **SDK 版本（已确认）**
 
 ```
-compileSdk = 36        // API 37 起 SDK 改为小版本命名（37.0/37.1/37.2），无裸 android-37 包
-targetSdk  = 36
+compileSdk = 37        // 不能低于 37：Compose 1.12.x / Lifecycle 2.11 / core-ktx 1.19 通过
+                      // AAR 元数据强制要求；SDK 平台包按小版本命名（37.0 / 37.1 / 37.2）
+targetSdk  = 37
 minSdk     = 30        // Android 11+，删除逻辑只需一套
 ```
 
@@ -589,11 +590,13 @@ benchmark-macro-junit4       = { module = "androidx.benchmark:benchmark-macro-ju
 - 密钥库可被 openssl 正确读取，含私钥
 - Gradle 9.5.0 分发校验和与官方值一致
 
-### 9.4 首次 CI 结果与已修问题
+### 9.4 CI 调试记录（三轮）
 
-**Run #1（2026-09-21 13:17）结论：失败，耗时 28 秒。**
+首次 CI 连续失败两次，问题都出在 SDK 版本，与代码无关。
 
-失败步骤：`安装 SDK 组件`（第 6 步），后续步骤全部跳过。
+#### Run #1 —— 失败，耗时 28 秒
+
+失败步骤：`安装 SDK 组件`。
 
 **根因**：Android 从 API 37 起改用带小版本号的 SDK 命名方案。查询 Google 官方仓库清单
 （`https://dl.google.com/android/repository/repository2-3.xml`，共 280 个包）确认：
@@ -604,22 +607,43 @@ benchmark-macro-junit4       = { module = "androidx.benchmark:benchmark-macro-ju
 | `platforms;android-37` | ❌ **不存在** |
 | `platforms;android-37.0` / `37.1` / `37.2` | ✅ 存在 |
 
-原先设定 `compileSdk = 37` 是错的 —— 没有任何一个包叫 `android-37`。
+#### Run #2 —— 失败，耗时约 5 分钟
 
-**修复**：`compileSdk` / `targetSdk` 改为 **36**（Android 16），CI 中安装
-`platforms;android-36` + `build-tools;36.0.0`，并补上 `sdkmanager --licenses` 以防许可证未接受。
+失败步骤：`单元测试`，报错 `> Task :app:checkDebugAarMetadata FAILED`。
 
-> 后续可选：待 AGP 明确支持 `compileSdkMinor` 之类的小版本 DSL 后，再迁移到 37.x。
-> 当前 36 不影响功能，也不影响 GitHub Release 分发（不走 Google Play 就没有 targetSdk 强制要求）。
+**根因**：把 `compileSdk` 降到 36 是**错误的方向**。Compose 1.12.x、Lifecycle 2.11.0、
+core-ktx 1.19.0 等最新 AndroidX 库通过 AAR 元数据强制要求宿主 `compileSdk >= 37`，
+共报出 22 条冲突：
+
+```
+Dependency 'androidx.compose.ui:ui-android:1.12.1' requires libraries and
+applications that depend on it to compile against version 37 or later of the
+Android APIs.
+:app is currently compiled against android-36.
+```
+
+#### Run #3 的修复（最终方案）
+
+`compileSdk` / `targetSdk` 恢复为 **37**，CI 中安装全部三个小版本平台包
+（`platforms;android-37.0` / `37.1` / `37.2`）+ `build-tools;36.0.0` / `37.0.0`，
+消除 AGP 解析歧义，并保留 `sdkmanager --licenses` 使 AGP 能自动补齐缺失组件。
+
+**结论：compileSdk 必须 ≥ 37，且平台包必须写成 `android-37.x`。**
+
+#### 关键经验
+
+1. **CI 日志在未认证状态下无法下载**（`Must have admin rights to Repository`）。
+   解法：在 workflow 中加一步，失败时用 `gh api` 把 Gradle 错误摘要回传到
+   **commit comment** —— 该接口公开可读，无需鉴权。这一改动让后续调试完全自主。
+2. **SDK 包是否存在可以直接查官方清单验证**，比反复跑 CI 试错快得多。
+3. 遇到 `checkDebugAarMetadata` 失败时，错误信息里已经给出了正确方向
+   （「at least 37, for example 37.1」），不要凭直觉往低版本降。
 
 **其余待观察风险**（按可能性排序）：
 
 1. **R8 混淆** —— CI 已在 PR 阶段就跑 `assembleRelease`，问题会在 PR 而非发版时暴露；应急手段是把 `isMinifyEnabled` 临时设为 `false`
 2. **Hilt 与 AGP 9 内置 Kotlin 的配合** —— 已对齐真实项目配置，风险较低
 3. **Compose BOM 2026.09.00 与 Kotlin 2.4.10 的编译器匹配** —— 若报 Compose 编译器版本错误，把 Kotlin 提到 2.4.20
-
-**排查方法论**（本次证明有效）：CI 日志在未认证状态下无法下载（403），但可以直接查
-Google 的 SDK 仓库清单来确定包是否存在 —— 比反复试错快得多。
 
 ---
 

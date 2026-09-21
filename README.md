@@ -32,7 +32,7 @@ https://github.com/unbelievable-mj/gallery_manage/releases/latest
 | 视频 | Media3 ExoPlayer 1.11.0 |
 | 图片加载 | Coil 3.6.3 |
 | 后台任务 | WorkManager 2.11.2 |
-| SDK | minSdk 30 / targetSdk 36 / compileSdk 36 |
+| SDK | minSdk 30 / targetSdk 37 / compileSdk 37 |
 
 ### 关于版本锁定
 
@@ -43,8 +43,11 @@ https://github.com/unbelievable-mj/gallery_manage/releases/latest
 - **KSP 已改为独立版本线**（`2.3.x`），不再使用 `2.4.10-2.0.x` 这种与 Kotlin 绑定的编号。
 - `kotlinOptions` 已废弃，改用顶层 `kotlin { compilerOptions { ... } }` 块。
 - **API 37 起 Android SDK 改用带小版本号的命名**：仓库里只有 `platforms;android-37.0` /
-  `37.1` / `37.2`，**不存在**裸的 `platforms;android-37`。因此本项目固定在
-  `compileSdk = 36`，这是当前确定可用的稳定包。
+  `37.1` / `37.2`，**不存在**裸的 `platforms;android-37`。CI 中三个小版本全部安装，
+  避免 AGP 解析歧义。
+- **compileSdk 不能低于 37**：Compose 1.12.x、Lifecycle 2.11、core-ktx 1.19 等库通过 AAR
+  元数据强制要求 `compileSdk >= 37`，降到 36 会在 `checkDebugAarMetadata` 阶段报
+  「requires libraries and applications that depend on it to compile against version 37 or later」。
 
 ---
 

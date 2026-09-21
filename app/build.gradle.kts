@@ -19,12 +19,15 @@ val releaseKeystore = System.getenv("SIGNING_KEYSTORE_PATH")
 
 android {
     namespace = "com.haoli.swipegallery"
-    compileSdk = 36
+    // 最新 AndroidX（Compose 1.12.x / Lifecycle 2.11 / core-ktx 1.19）通过 AAR 元数据
+    // 强制要求 compileSdk >= 37，不能降到 36。
+    // 注意 API 37 起平台包按小版本命名（android-37.0 / 37.1 / 37.2），CI 中需安装这些包。
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.haoli.swipegallery"
         minSdk = 30
-        targetSdk = 36
+        targetSdk = 37
         versionCode = appVersionCode
         versionName = appVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
