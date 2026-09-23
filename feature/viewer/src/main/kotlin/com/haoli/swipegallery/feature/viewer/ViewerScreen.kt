@@ -10,7 +10,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -186,6 +185,9 @@ private fun TriagePager(
         ) {
             ViewerPage(
                 item = item,
+                // Pager 会预组合相邻页，只有当前页才允许播放，
+                // 否则会同时响起多个视频的声音
+                isCurrent = page == pagerState.currentPage,
                 onLoadFullImage = onLoadFullImage,
             )
         }
@@ -194,6 +196,23 @@ private fun TriagePager(
 
 @Composable
 private fun ViewerPage(
+    item: MediaItem,
+    isCurrent: Boolean,
+    onLoadFullImage: suspend (String) -> Bitmap?,
+) {
+    when (item.kind) {
+        MediaKind.VIDEO -> VideoPlayer(
+            uri = item.uri,
+            active = isCurrent,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        MediaKind.IMAGE -> ImagePage(item = item, onLoadFullImage = onLoadFullImage)
+    }
+}
+
+@Composable
+private fun ImagePage(
     item: MediaItem,
     onLoadFullImage: suspend (String) -> Bitmap?,
 ) {
@@ -217,49 +236,6 @@ private fun ViewerPage(
             )
         } else {
             CircularProgressIndicator(color = Color.White)
-        }
-
-        if (item.kind == MediaKind.VIDEO) {
-            VideoBadge(item = item)
-        }
-    }
-}
-
-/**
- * 视频暂以首帧静态展示。
- * 真正的播放能力（Media3 ExoPlayer）是下一步的工作 —— 这里先把位置和交互占住，
- * 避免用户看到视频时误以为是图片。
- *
- * 声明为 [BoxScope] 扩展：`Modifier.align` 只在 Box 作用域内可用，
- * 写在普通 composable 里会直接编译不过。
- */
-@Composable
-private fun BoxScope.VideoBadge(item: MediaItem) {
-    val duration = item.durationMillis
-    Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = Color.Black.copy(alpha = 0.6f),
-        modifier = Modifier
-            .align(Alignment.BottomCenter)
-            .padding(bottom = 24.dp),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "视频",
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.White,
-            )
-            if (duration != null && duration > 0L) {
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = formatDuration(duration),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.75f),
-                )
-            }
         }
     }
 }
@@ -372,6 +348,8 @@ private fun InfoBar(item: MediaItem) {
             null
         }
         val parts = buildList {
+            // 视频把时长放最前，这是它和图片最需要区分的属性
+            item.durationMillis?.takeIf { it > 0L }?.let { add(formatDuration(it)) }
             add(formatFileSize(item.sizeBytes))
             resolution?.let { add(it) }
             if (item.albumName.isNotBlank()) add(item.albumName)

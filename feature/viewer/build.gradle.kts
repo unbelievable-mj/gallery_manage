@@ -47,4 +47,8 @@ dependencies {
     ksp(libs.hilt.compiler)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.timber)
+
+    // 视频播放
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.common)
 }
