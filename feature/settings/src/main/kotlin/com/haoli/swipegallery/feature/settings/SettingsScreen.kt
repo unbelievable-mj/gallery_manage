@@ -285,7 +285,8 @@ private fun MoveTargetBlock(
             albums.forEach { album ->
                 TargetOption(
                     label = "${album.name} · ${album.itemCount}",
-                    selected = album.id == target.albumId,
+                    // target 可空，必须用安全调用
+                    selected = album.id == target?.albumId,
                     onClick = { onSelect(album); expanded = false },
                 )
             }
