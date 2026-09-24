@@ -30,6 +30,20 @@ data class TrashUiState(
     val hasSelection: Boolean get() = selectedIds.isNotEmpty()
     val allSelected: Boolean get() = appItems.isNotEmpty() && selectedIds.size == appItems.size
     val isEmpty: Boolean get() = appItems.isEmpty() && systemItems.isEmpty()
+
+    /**
+     * 待清理内容占用的空间。
+     *
+     * 这是这一页最该显眼的数字：回收站里的内容**仍在磁盘上**，
+     * 用户清空后如果看不到占用下降，就会怀疑删除根本没生效。
+     */
+    val totalBytes: Long get() = appItems.sumOf { it.sizeBytes }
+
+    /** 当前选中项占用的空间，让用户在按下「删除」之前知道能腾出多少。 */
+    val selectedBytes: Long
+        get() = appItems.filter { it.id in selectedIds }.sumOf { it.sizeBytes }
+
+    val systemBytes: Long get() = systemItems.sumOf { it.sizeBytes }
 }
 
 /**
@@ -51,6 +65,9 @@ class TrashViewModel @Inject constructor(
 
     /** 已发起删除的记录，等系统对话框返回后决定去留。 */
     private var pendingPurgeIds: List<Long> = emptyList()
+
+    /** 本次删除的目标是系统回收站里的内容，而非应用回收站。 */
+    private var purgingSystem = false
 
     init {
         viewModelScope.launch {
@@ -136,6 +153,12 @@ class TrashViewModel @Inject constructor(
 
     /** 用户在系统对话框里确认了删除。 */
     fun onPurgeConfirmed() {
+        if (purgingSystem) {
+            purgingSystem = false
+            reloadSystemTrash()
+            return
+        }
+
         val ids = pendingPurgeIds
         pendingPurgeIds = emptyList()
         if (ids.isEmpty()) return
@@ -152,7 +175,23 @@ class TrashViewModel @Inject constructor(
      * 记录保持不动：内容继续留在回收站里，不能出现「点了取消东西却没了」。
      */
     fun onPurgeDismissed() {
+        purgingSystem = false
         pendingPurgeIds = emptyList()
+    }
+
+    /**
+     * 永久删除系统回收站里的全部内容。
+     *
+     * 需要这个入口的原因：应用回收站里的内容被删除后，如果走的是「移入系统回收站」，
+     * 空间不会释放；而用户往往找不到手机自带的回收站入口，那部分空间就卡住了。
+     */
+    fun purgeSystemTrash(): IntentSender? {
+        val targets = _state.value.systemItems
+        if (targets.isEmpty()) return null
+
+        pendingPurgeIds = emptyList()
+        purgingSystem = true
+        return repository.purgeRequest(targets.map { it.uri })
     }
 
     /** 从系统回收站取回单项。 */

@@ -51,6 +51,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.haoli.swipegallery.core.common.formatFileSize
 import com.haoli.swipegallery.core.model.MediaItem
 
 /**
@@ -107,6 +108,12 @@ fun TrashRoute(
                 restoreLauncher.launch(IntentSenderRequest.Builder(sender).build())
             }
         },
+        onPurgeSystemTrash = {
+            val sender = viewModel.purgeSystemTrash()
+            if (sender != null) {
+                purgeLauncher.launch(IntentSenderRequest.Builder(sender).build())
+            }
+        },
         onLoadThumbnail = viewModel::loadThumbnail,
         modifier = modifier,
     )
@@ -122,6 +129,7 @@ fun TrashScreen(
     onRestore: () -> Unit,
     onPurge: () -> Unit,
     onRestoreSystemItem: (MediaItem) -> Unit,
+    onPurgeSystemTrash: () -> Unit,
     onLoadThumbnail: suspend (String) -> Bitmap?,
     modifier: Modifier = Modifier,
 ) {
@@ -133,6 +141,7 @@ fun TrashScreen(
     ) {
         TrashTopBar(
             count = state.appItems.size,
+            totalBytes = state.totalBytes,
             allSelected = state.allSelected,
             hasSelection = state.hasSelection,
             onBack = onBack,
@@ -183,7 +192,9 @@ fun TrashScreen(
                         item(span = { GridItemSpan(maxLineSpan) }) {
                             SectionHeader(
                                 title = "系统回收站",
-                                subtitle = "点击任一项即可取回",
+                                subtitle = "占用 ${formatFileSize(state.systemBytes)} · 点击任一项可取回",
+                                actionLabel = "全部永久删除",
+                                onAction = onPurgeSystemTrash,
                             )
                         }
                         items(
@@ -206,6 +217,7 @@ fun TrashScreen(
         if (state.hasSelection) {
             TrashActionBar(
                 selectedCount = state.selectedIds.size,
+                selectedBytes = state.selectedBytes,
                 onRestore = onRestore,
                 onPurge = onPurge,
             )
@@ -216,6 +228,7 @@ fun TrashScreen(
 @Composable
 private fun TrashTopBar(
     count: Int,
+    totalBytes: Long,
     allSelected: Boolean,
     hasSelection: Boolean,
     onBack: () -> Unit,
@@ -243,7 +256,12 @@ private fun TrashTopBar(
                 style = MaterialTheme.typography.titleLarge,
             )
             Text(
-                text = if (count == 0) "应用回收站为空" else "$count 项待处理",
+                text = if (count == 0) {
+                    "应用回收站为空"
+                } else {
+                    // 把占用的空间摆在最显眼处：这部分仍在磁盘上
+                    "$count 项 · 占用 ${formatFileSize(totalBytes)}"
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -263,16 +281,32 @@ private fun TrashTopBar(
 }
 
 @Composable
-private fun SectionHeader(title: String, subtitle: String) {
+private fun SectionHeader(
+    title: String,
+    subtitle: String,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 6.dp),
     ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleSmall,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.weight(1f),
+            )
+            if (actionLabel != null && onAction != null) {
+                Text(
+                    text = actionLabel,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.clickable(onClick = onAction),
+                )
+            }
+        }
         Text(
             text = subtitle,
             style = MaterialTheme.typography.labelSmall,
@@ -355,6 +389,7 @@ private fun TrashCell(
 @Composable
 private fun TrashActionBar(
     selectedCount: Int,
+    selectedBytes: Long,
     onRestore: () -> Unit,
     onPurge: () -> Unit,
 ) {
@@ -364,7 +399,7 @@ private fun TrashActionBar(
     ) {
         Column {
             Text(
-                text = "删除后内容会移入系统回收站（设备支持时），否则将被永久移除",
+                text = "删除后永久移除，可释放 ${formatFileSize(selectedBytes)}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp),
@@ -381,7 +416,7 @@ private fun TrashActionBar(
                     modifier = Modifier.weight(1f),
                 )
                 ActionButton(
-                    label = "删除",
+                    label = "删除并释放 ${formatFileSize(selectedBytes)}",
                     container = MaterialTheme.colorScheme.errorContainer,
                     content = MaterialTheme.colorScheme.onErrorContainer,
                     onClick = onPurge,

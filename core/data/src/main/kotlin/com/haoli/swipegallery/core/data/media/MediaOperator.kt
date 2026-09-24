@@ -19,8 +19,9 @@ import timber.log.Timber
  *
  * 删除分两步，这个区分很关键：
  *  - **滑卡时**：只把内容记进应用自己的回收站（`TrashDao`），**绝不碰系统**。
- *    `createTrashRequest` 在部分 ROM 上会退化成真正删除，
- *    而滑卡这个动作没有二次确认，一旦退化就是静默的数据丢失。
+ *    系统接口在各类 ROM 上的表现并不一致（是否真的进回收站、回收站入口是否可见，
+ *    都因厂商而异），而滑卡没有二次确认，一旦行为不符预期就是静默的数据丢失，
+ *    用户没有任何补救手段。
  *  - **用户在回收站里点「删除」时**：才调用 [purgeRequest]。
  *    此时已有明确确认，即便退化也是用户想要的结果。
  */
@@ -32,22 +33,21 @@ class MediaOperator @Inject constructor(
     private val resolver: ContentResolver get() = context.contentResolver
 
     /**
-     * 构造删除请求：**优先移入系统回收站，设备不支持时退回永久删除**。
+     * 构造「永久删除」请求。**这是全应用唯一会真正销毁文件的地方。**
      *
-     * 这里可以安全使用 `createTrashRequest`，因为调用点已经拿到用户的明确确认
-     * （回收站页面的按钮 + 紧随其后的系统对话框）。两种结果都符合用户意图：
-     *  - 设备支持回收站 → 内容进系统回收站，之后在手机图库里也能找回
-     *  - 设备不支持 → 退回永久删除，就是用户点的那个「删除」
+     * 必须用 `createDeleteRequest` 而不是 `createTrashRequest`：
+     * 后者只是把文件移进系统回收站，**磁盘占用一点都不会变**。
+     * 用户点「删除」的意图是释放空间，把它塞进另一个回收站等于没删。
+     *
+     * 曾经这里写的是「先试 createTrashRequest，失败才退回永久删除」，
+     * 结果是用户清空了几百兆却发现空间毫无变化 —— 因为在支持系统回收站的
+     * 设备上，第一个分支总是成功，永久删除永远不会被执行。
      */
     fun purgeRequest(uris: List<String>): IntentSender? {
         if (uris.isEmpty()) return null
-        val targets = uris.map(Uri::parse)
 
         return runCatching {
-            MediaStore.createTrashRequest(resolver, targets, true).intentSender
-        }.recoverCatching {
-            // 部分设备或存储卷不支持回收站，退回永久删除
-            MediaStore.createDeleteRequest(resolver, targets).intentSender
+            MediaStore.createDeleteRequest(resolver, uris.map(Uri::parse)).intentSender
         }.onFailure {
             // 常见原因：URI 不属于 MediaStore、数量超限
             Timber.w(it, "构造删除请求失败，目标数量=%d", uris.size)
