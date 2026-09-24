@@ -246,23 +246,6 @@ class MediaStoreDataSource @Inject constructor(
     }
 
     /**
-     * 系统回收站里的项目。
-     *
-     * 被移入回收站的文件**不会**出现在常规查询里 —— 这正是「删了之后在相册里找不到、
-     * 以为被永久删除」的原因。它们其实还在磁盘上，只是 IS_TRASHED 被置为 1，
-     * 系统会在保留期结束后才真正清理。
-     *
-     * 这里把图片与视频合起来按时间倒序返回，让用户能确认内容还在、并且可以取回。
-     */
-    fun trashedItems(): List<MediaItem> {
-        val spec = SortSpec(SortField.DATE_MODIFIED, SortDirection.DESC)
-        return (
-            items(kind = MediaKind.IMAGE, spec = spec, trashed = true) +
-                items(kind = MediaKind.VIDEO, spec = spec, trashed = true)
-            ).sortedByDescending { it.effectiveDateMillis }
-    }
-
-    /**
      * 基础筛选 + 可选的相册限制。
      * 相册用参数占位符而非字符串拼接，避免 bucket 名里出现引号时把 SQL 拼坏。
      */
@@ -276,7 +259,12 @@ class MediaStoreDataSource @Inject constructor(
         const val ACTIVE_SELECTION =
             "${MediaStore.MediaColumns.IS_TRASHED} = 0 AND ${MediaStore.MediaColumns.IS_PENDING} = 0"
 
-        /** 系统回收站中的媒体。 */
+        /**
+         * 系统回收站中的媒体。
+         *
+         * 保留这个分支是给「系统回收站」查询留的口子 —— 应用自己的回收站
+         * 不依赖它，但排查 ROM 行为时用得上。
+         */
         const val TRASHED_SELECTION = "${MediaStore.MediaColumns.IS_TRASHED} = 1"
     }
 }

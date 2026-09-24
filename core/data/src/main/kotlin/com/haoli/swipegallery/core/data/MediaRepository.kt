@@ -24,6 +24,7 @@ interface MediaRepository {
     /**
      * 按类型与排序规则取媒体列表。滑卡队列由它生成。
      * [albumId] 非空时只返回该相册内的媒体。
+     * 结果会**剔除回收站里的项**，因此用户看到的就是「还没被删的」。
      */
     fun observeItems(
         kind: MediaKind,
@@ -35,13 +36,18 @@ interface MediaRepository {
     fun observeAlbums(kind: MediaKind): Flow<List<MediaAlbum>>
 
     /**
-     * 系统回收站中的项目（图片 + 视频，按时间倒序）。
+     * 回收站内容。
      *
-     * 删除走的是 `createTrashRequest`，内容会进系统回收站而不是被永久删除，
-     * 但被回收站收纳的文件不会出现在常规查询里。这个方法让那部分内容可见，
-     * 用户才能确认「删掉的东西还在、可以取回」。
+     * 这是**应用自己的**回收站，不是系统回收站。原因见 `TrashEntity` 的注释：
+     * 系统回收站在部分 ROM 上不可靠，把删除绑上去等于把用户数据交给运气。
      */
-    fun observeTrashed(): Flow<List<MediaItem>>
+    fun observeTrash(): Flow<List<MediaItem>>
+
+    /** 把内容记入回收站。文件本身不动，因此瞬时完成、绝对可逆。 */
+    suspend fun addToTrash(items: List<MediaItem>)
+
+    /** 从回收站取回：只删掉记录，文件从未被动过。 */
+    suspend fun restoreFromTrash(mediaIds: List<Long>)
 
     /** 网格用缩略图。图片与视频都走同一条路径。 */
     suspend fun thumbnail(uri: String, sizePx: Int): Bitmap?
@@ -49,12 +55,11 @@ interface MediaRepository {
     /** 查看器用全尺寸图（已按目标尺寸降采样并纠正 EXIF 方向）。 */
     suspend fun fullImage(uri: String, maxSizePx: Int): Bitmap?
 
-    /** 构造批量移入系统回收站的请求（删除阶段二）。 */
-    fun trashRequest(uris: List<String>): IntentSender?
-
-    /** 构造从系统回收站还原的请求（撤销窗口过期后的反悔）。 */
-    fun untrashRequest(uris: List<String>): IntentSender?
-
-    /** 构造永久删除请求，跳过回收站。 */
+    /**
+     * 构造永久删除请求。跳过回收站，不可恢复。
+     *
+     * **只在用户于回收站页面明确选择「彻底删除」时调用。**
+     * 滑卡删除绝不会走到这里 —— 那是数据丢失的唯一来源。
+     */
     fun deleteRequest(uris: List<String>): IntentSender?
 }

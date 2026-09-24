@@ -11,7 +11,6 @@ import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -25,12 +24,11 @@ data class TrashUiState(
 }
 
 /**
- * 系统回收站页面的状态持有者。
+ * 回收站页面的状态持有者。
  *
- * 这一页存在的意义是**让删除可被验证**：滑卡删除走的是 `createTrashRequest`，
- * 内容进的是系统回收站而不是被永久删除，但回收站里的文件不会出现在常规查询里，
- * 用户在相册中看不到就会以为被真删了。把 IS_TRASHED = 1 的内容列出来，
- * 用户才能确认东西还在、并且能取回。
+ * 这里管理的是**应用自己的回收站**，不是系统回收站。
+ * 滑卡删除只写一条记录，文件原封不动 —— 所以「恢复」是瞬时的，
+ * 而「彻底删除」是这个应用里唯一会真正销毁文件的路径。
  */
 @HiltViewModel
 class TrashViewModel @Inject constructor(
@@ -40,21 +38,21 @@ class TrashViewModel @Inject constructor(
     private val _state = MutableStateFlow(TrashUiState())
     val state: StateFlow<TrashUiState> = _state.asStateFlow()
 
-    init {
-        reload()
-    }
+    /** 已发起「彻底删除」的记录，等系统对话框返回后决定去留。 */
+    private var pendingPurgeIds: List<Long> = emptyList()
 
-    fun reload() {
+    init {
         viewModelScope.launch {
-            val items = repository.observeTrashed().first()
-            val alive = items.mapTo(HashSet()) { it.id }
-            _state.update { previous ->
-                previous.copy(
-                    items = items,
-                    loading = false,
-                    // 已选中的项可能已被别处取回或清理，剔除掉避免操作到不存在的目标
-                    selectedIds = previous.selectedIds intersect alive,
-                )
+            repository.observeTrash().collect { items ->
+                val alive = items.mapTo(HashSet()) { it.id }
+                _state.update { previous ->
+                    previous.copy(
+                        items = items,
+                        loading = false,
+                        // 记录可能已被别处恢复或清理，剔除失效的选中项
+                        selectedIds = previous.selectedIds intersect alive,
+                    )
+                }
             }
         }
     }
@@ -78,18 +76,52 @@ class TrashViewModel @Inject constructor(
         _state.update { it.copy(selectedIds = emptySet()) }
     }
 
-    /** 把选中项移出回收站，回到相册。 */
-    fun restoreSelected(): IntentSender? =
-        repository.untrashRequest(selectedUris() ?: return null)
+    /** 取回。只删掉记录，文件从未被动过，因此瞬时完成。 */
+    fun restoreSelected() {
+        val ids = _state.value.selectedIds.toList()
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            repository.restoreFromTrash(ids)
+            _state.update { it.copy(selectedIds = emptySet()) }
+        }
+    }
 
-    /** 永久删除选中项。跳过回收站，不可恢复。 */
-    fun deleteSelectedForever(): IntentSender? =
-        repository.deleteRequest(selectedUris() ?: return null)
-
-    private fun selectedUris(): List<String>? {
+    /**
+     * 彻底删除选中项。这是全应用唯一会真正销毁文件的地方。
+     *
+     * 返回的 IntentSender 交给 `StartIntentSenderForResult` 启动，
+     * 系统会弹一次确认框 —— 这正是我们想要的：不可逆的操作必须有明确确认。
+     */
+    fun purgeSelected(): IntentSender? {
         val snapshot = _state.value
         if (snapshot.selectedIds.isEmpty()) return null
-        return snapshot.items.filter { it.id in snapshot.selectedIds }.map { it.uri }
+
+        val uris = snapshot.items
+            .filter { it.id in snapshot.selectedIds }
+            .map { it.uri }
+
+        pendingPurgeIds = snapshot.selectedIds.toList()
+        return repository.deleteRequest(uris)
+    }
+
+    /**
+     * 用户在系统对话框里确认了删除。
+     *
+     * 只在确认时清记录：如果用户取消，内容仍留在回收站里，
+     * 不会出现「点了取消但东西也没了」。
+     */
+    fun onPurgeConfirmed() {
+        val ids = pendingPurgeIds
+        pendingPurgeIds = emptyList()
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            repository.restoreFromTrash(ids)
+            _state.update { it.copy(selectedIds = emptySet()) }
+        }
+    }
+
+    fun onPurgeDismissed() {
+        pendingPurgeIds = emptyList()
     }
 
     suspend fun loadThumbnail(uri: String): Bitmap? = repository.thumbnail(uri, THUMBNAIL_PX)

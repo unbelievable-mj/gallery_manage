@@ -78,9 +78,12 @@ fun isPartialMediaAccess(context: Context): Boolean {
 /**
  * 是否已获得「媒体管理」特殊权限。
  *
- * 拿到它之后，`createTrashRequest` / `createWriteRequest` / `createDeleteRequest`
- * 都不再逐次弹出系统确认框 —— 这是「滑卡不被打断」的关键。
- * 官方文档明确：应用以 Android 12（API 31）或更高为目标平台时才能申请该权限。
+ * 拿到它之后 `createDeleteRequest` 等调用不再逐次弹系统确认框。
+ *
+ * **当前界面没有使用它**：本项目的「彻底删除」是不可逆操作，
+ * 我们**正需要**那个系统确认框。保留这两个函数是为了将来若加入
+ * 「删除免确认」的可选模式时可以直接接上。
+ * 官方要求应用以 API 31+ 为目标平台才有资格申请，本项目 targetSdk 37 满足。
  *
  * 判定优先用 AppOps：`checkSelfPermission` 对「特殊应用权限」不一定可靠，
  * 可能在实际已授权时仍返回 DENIED，导致界面一直提示去授权。

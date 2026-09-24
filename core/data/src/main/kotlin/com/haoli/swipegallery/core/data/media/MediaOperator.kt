@@ -14,14 +14,16 @@ import timber.log.Timber
  * 媒体写操作的唯一出口。
  *
  * **项目铁律**：UI 层与 ViewModel 永远不直接调用 `ContentResolver.delete()`。
- * 所有删除/保留/移动都必须经过这里 —— 它是撤销能力能够成立的唯一前提。
+ * 所有删除都必须经过这里 —— 它是撤销能力能够成立的唯一前提。
  *
  * 删除采用两阶段提交（见 DEVELOPMENT_PLAN §3.5）：
- *  - 阶段一：调用方在本地维护待删队列并从 UI 移除，不触碰系统（零延迟、完全可逆）
- *  - 阶段二：由这里批量构造系统回收站请求，一次性交给用户确认
+ *  - 阶段一：调用方把内容记进**应用自己的回收站**（`TrashDao`），文件原封不动
+ *  - 阶段二：用户在回收站里明确点「彻底删除」时，由这里构造系统删除请求
  *
- * 之所以不逐个删除：每次 `createTrashRequest` 都会弹一次系统对话框，
- * 逐张弹会彻底打断滑卡节奏。
+ * 为什么不把「删除」直接映射到系统的 `createTrashRequest`：
+ * 该 API 在文档上确实是把文件移入系统回收站，但实测在部分 ROM 上并不生效，
+ * 内容会直接消失且无法找回。把用户数据交给一个行为不可控的系统调用是错误的设计，
+ * 所以这里**只保留不可逆的 `createDeleteRequest`**，且只在用户二次确认后调用。
  */
 @Singleton
 class MediaOperator @Inject constructor(
@@ -31,45 +33,20 @@ class MediaOperator @Inject constructor(
     private val resolver: ContentResolver get() = context.contentResolver
 
     /**
-     * 构造「移入系统回收站」请求（阶段二）。
+     * 构造「永久删除」请求。跳过回收站，不可恢复。
      *
      * 返回 null 表示没有可处理的目标。返回值需要交给
      * `ActivityResultContracts.StartIntentSenderForResult` 启动，
-     * 系统会弹出一次确认对话框，用户同意后才真正执行。
+     * 系统会弹一次确认对话框 —— 这正是我们想要的，不可逆操作必须有明确确认。
      */
-    fun trashRequest(uris: List<String>): IntentSender? = request(uris) { resolver, targets ->
-        MediaStore.createTrashRequest(resolver, targets, true)
-    }
-
-    /**
-     * 构造「从系统回收站还原」请求。
-     *
-     * 用于撤销窗口过期之后的反悔 —— 此时文件已进入系统回收站，
-     * 只能再发一次请求把它取回来。
-     */
-    fun untrashRequest(uris: List<String>): IntentSender? = request(uris) { resolver, targets ->
-        MediaStore.createTrashRequest(resolver, targets, false)
-    }
-
-    /**
-     * 构造「永久删除」请求。跳过回收站，不可恢复。
-     * 只应在回收站页面用户明确选择「彻底删除」时使用。
-     */
-    fun deleteRequest(uris: List<String>): IntentSender? = request(uris) { resolver, targets ->
-        MediaStore.createDeleteRequest(resolver, targets)
-    }
-
-    private inline fun request(
-        uris: List<String>,
-        build: (ContentResolver, Collection<Uri>) -> android.app.PendingIntent,
-    ): IntentSender? {
+    fun deleteRequest(uris: List<String>): IntentSender? {
         if (uris.isEmpty()) return null
 
         return runCatching {
-            build(resolver, uris.map(Uri::parse)).intentSender
+            MediaStore.createDeleteRequest(resolver, uris.map(Uri::parse)).intentSender
         }.onFailure {
-            // 常见原因：URI 不属于 MediaStore、数量超限、或系统回收站不可用
-            Timber.w(it, "构造媒体写请求失败，目标数量=%d", uris.size)
+            // 常见原因：URI 不属于 MediaStore、数量超限
+            Timber.w(it, "构造媒体删除请求失败，目标数量=%d", uris.size)
         }.getOrNull()
     }
 }

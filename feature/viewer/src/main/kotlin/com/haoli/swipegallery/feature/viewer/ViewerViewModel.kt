@@ -1,6 +1,5 @@
 package com.haoli.swipegallery.feature.viewer
 
-import android.content.IntentSender
 import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -186,18 +185,18 @@ class ViewerViewModel @Inject constructor(
     suspend fun loadFullImage(uri: String): Bitmap? = repository.fullImage(uri, FULL_IMAGE_PX)
 
     /**
-     * 阶段二：把待删队列提交给系统回收站。
+     * 阶段二：把待删队列提交到**应用自己的回收站**。
      *
-     * 返回 null 表示没有待处理项。返回值需要交给
-     * `ActivityResultContracts.StartIntentSenderForResult` 启动，
-     * 系统会弹一次确认对话框（已授予 MANAGE_MEDIA 时不弹）。
+     * 只写一条记录，文件原封不动。因此这里没有系统对话框、不会被打断，
+     * 更重要的是不会因为 ROM 对系统回收站的实现差异而丢数据。
+     *
+     * 真正的销毁由用户在回收站页面明确点「彻底删除」时才发生。
      */
-    fun flushToSystemTrash(): IntentSender? {
-        if (pendingTrash.isEmpty()) return null
-
-        val targets = pendingTrash.map { it.uri }
+    suspend fun commitToTrash() {
+        if (pendingTrash.isEmpty()) return
+        val targets = pendingTrash.toList()
         pendingTrash.clear()
-        return repository.trashRequest(targets)
+        repository.addToTrash(targets)
     }
 
     private fun ViewerUiState.afterRemoval(

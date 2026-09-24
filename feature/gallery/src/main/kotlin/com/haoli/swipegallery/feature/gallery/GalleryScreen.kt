@@ -88,9 +88,7 @@ fun GalleryRoute(
     GalleryScreen(
         state = state,
         partialAccess = isPartialMediaAccess(context),
-        needsManageMedia = !hasManageMediaPermission(context),
         onRequestPermission = { permissionLauncher.launch(requiredMediaPermissions()) },
-        onRequestManageMedia = { openManageMediaSettings(context) },
         onKindChange = viewModel::setKind,
         onSortFieldChange = viewModel::setSortField,
         onToggleSortDirection = viewModel::toggleSortDirection,
@@ -106,9 +104,7 @@ fun GalleryRoute(
 fun GalleryScreen(
     state: GalleryUiState,
     partialAccess: Boolean,
-    needsManageMedia: Boolean,
     onRequestPermission: () -> Unit,
-    onRequestManageMedia: () -> Unit,
     onKindChange: (MediaKind) -> Unit,
     onSortFieldChange: (SortField) -> Unit,
     onToggleSortDirection: () -> Unit,
@@ -152,10 +148,6 @@ fun GalleryScreen(
 
         if (partialAccess) {
             PartialAccessBanner(onRequestPermission = onRequestPermission)
-        }
-
-        if (needsManageMedia) {
-            ManageMediaBanner(onRequestManageMedia = onRequestManageMedia)
         }
 
         Box(modifier = Modifier.weight(1f)) {
@@ -229,43 +221,6 @@ private fun GalleryHeader(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            )
-        }
-    }
-}
-
-/**
- * 「媒体管理」特殊权限的引导条。
- *
- * 没拿到这个权限时，每次删除都会弹一次系统确认框，直接打断滑卡节奏。
- * 拿到之后 `createTrashRequest` 等调用不再逐次询问。
- * 官方要求应用以 API 31+ 为目标平台才有资格申请，本项目 targetSdk 37 满足。
- */
-@Composable
-private fun ManageMediaBanner(onRequestManageMedia: () -> Unit) {
-    Surface(
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-        shape = RoundedCornerShape(10.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 4.dp),
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "开启「媒体管理」后，删除不再逐次弹确认框",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onTertiaryContainer,
-                modifier = Modifier.weight(1f),
-            )
-            Spacer(Modifier.width(12.dp))
-            Text(
-                text = "去开启",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.clickable(onClick = onRequestManageMedia),
             )
         }
     }

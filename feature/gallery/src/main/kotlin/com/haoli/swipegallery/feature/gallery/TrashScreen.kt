@@ -1,6 +1,6 @@
 package com.haoli.swipegallery.feature.gallery
 
-import android.content.IntentSender
+import android.app.Activity
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -54,7 +54,8 @@ import com.haoli.swipegallery.core.model.MediaItem
 /**
  * 回收站入口。
  *
- * 两种操作的确认对话框都由系统弹出，这里只负责发起并在返回后刷新列表。
+ * 「恢复」是纯本地操作，瞬时完成；
+ * 「彻底删除」会拉起系统确认框 —— 全应用只有这一条路径会真正销毁文件。
  */
 @Composable
 fun TrashRoute(
@@ -64,17 +65,15 @@ fun TrashRoute(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    val actionLauncher = rememberLauncherForActivityResult(
+    val purgeLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult(),
-    ) {
-        // 无论用户是否同意，都刷新一次：同意则列表已变，拒绝则选中态需要复位
-        viewModel.clearSelection()
-        viewModel.reload()
-    }
-
-    val launch: (IntentSender?) -> Unit = { sender ->
-        if (sender != null) {
-            actionLauncher.launch(IntentSenderRequest.Builder(sender).build())
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            viewModel.onPurgeConfirmed()
+        } else {
+            // 用户在系统确认框里点了取消 —— 内容继续留在回收站，
+            // 不能出现「点了取消东西却没了」
+            viewModel.onPurgeDismissed()
         }
     }
 
@@ -86,8 +85,13 @@ fun TrashRoute(
         onToggleSelection = viewModel::toggleSelection,
         onSelectAll = viewModel::selectAll,
         onClearSelection = viewModel::clearSelection,
-        onRestore = { launch(viewModel.restoreSelected()) },
-        onDeleteForever = { launch(viewModel.deleteSelectedForever()) },
+        onRestore = viewModel::restoreSelected,
+        onPurge = {
+            val sender = viewModel.purgeSelected()
+            if (sender != null) {
+                purgeLauncher.launch(IntentSenderRequest.Builder(sender).build())
+            }
+        },
         onLoadThumbnail = viewModel::loadThumbnail,
         modifier = modifier,
     )
@@ -101,7 +105,7 @@ fun TrashScreen(
     onSelectAll: () -> Unit,
     onClearSelection: () -> Unit,
     onRestore: () -> Unit,
-    onDeleteForever: () -> Unit,
+    onPurge: () -> Unit,
     onLoadThumbnail: suspend (String) -> Bitmap?,
     modifier: Modifier = Modifier,
 ) {
@@ -157,7 +161,7 @@ fun TrashScreen(
             TrashActionBar(
                 selectedCount = state.selectedIds.size,
                 onRestore = onRestore,
-                onDeleteForever = onDeleteForever,
+                onPurge = onPurge,
             )
         }
     }
@@ -193,7 +197,7 @@ private fun TrashTopBar(
                 style = MaterialTheme.typography.titleLarge,
             )
             Text(
-                text = if (count == 0) "空" else "$count 项 · 系统会在一段时间后自动清理",
+                text = if (count == 0) "空" else "$count 项 · 仍占用空间，彻底删除后才释放",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -272,30 +276,41 @@ private fun TrashCell(
 private fun TrashActionBar(
     selectedCount: Int,
     onRestore: () -> Unit,
-    onDeleteForever: () -> Unit,
+    onPurge: () -> Unit,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            ActionButton(
-                label = "恢复 $selectedCount 项",
-                container = MaterialTheme.colorScheme.primary,
-                content = MaterialTheme.colorScheme.onPrimary,
-                onClick = onRestore,
-                modifier = Modifier.weight(1f),
-            )
-            ActionButton(
-                label = "彻底删除",
-                container = MaterialTheme.colorScheme.errorContainer,
-                content = MaterialTheme.colorScheme.onErrorContainer,
-                onClick = onDeleteForever,
-                modifier = Modifier.weight(1f),
-            )
+        Column {
+            Row(
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp),
+            ) {
+                Text(
+                    text = "彻底删除会永久移除文件，不可恢复",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Row(
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                ActionButton(
+                    label = "恢复 $selectedCount 项",
+                    container = MaterialTheme.colorScheme.primary,
+                    content = MaterialTheme.colorScheme.onPrimary,
+                    onClick = onRestore,
+                    modifier = Modifier.weight(1f),
+                )
+                ActionButton(
+                    label = "彻底删除",
+                    container = MaterialTheme.colorScheme.errorContainer,
+                    content = MaterialTheme.colorScheme.onErrorContainer,
+                    onClick = onPurge,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }
@@ -342,7 +357,7 @@ private fun EmptyTrash() {
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "滑卡删除的内容会先进入这里，可以随时取回；\n系统会在保留期结束后自动清理。",
+                text = "滑卡删除的内容会先进入这里，可以随时取回。\n只有在这里点「彻底删除」才会真正移除文件。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,

@@ -2,9 +2,6 @@ package com.haoli.swipegallery.feature.viewer
 
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.IntentSenderRequest
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -33,6 +30,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,6 +47,7 @@ import com.haoli.swipegallery.core.common.formatFileSize
 import com.haoli.swipegallery.core.model.MediaItem
 import com.haoli.swipegallery.core.model.MediaKind
 import com.haoli.swipegallery.core.model.TriageProgress
+import kotlinx.coroutines.launch
 
 /**
  * 查看器入口。
@@ -58,8 +57,8 @@ import com.haoli.swipegallery.core.model.TriageProgress
  * 组合会重建、`items` 变成空列表，直接把 ViewModel 里已有的队列覆盖掉，
  * 用户会看到「一旋转照片就没了」。
  *
- * 这里只负责把「本地待删队列」提交给系统（两阶段提交的阶段二），
- * 并保证刷新回调一定发生在提交之后。
+ * 关闭时把待删队列提交到应用自己的回收站：只写记录，不碰文件，
+ * 因此没有系统对话框、也不可能丢数据。
  */
 @Composable
 fun ViewerRoute(
@@ -69,24 +68,15 @@ fun ViewerRoute(
     viewModel: ViewerViewModel = viewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
     var closing by remember { mutableStateOf(false) }
-
-    // 阶段二的结果回调。无论用户是否同意，都要刷新一次：
-    // 同意则文件已进回收站，拒绝则本地待删队列已清空、列表需要还原。
-    val trashLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartIntentSenderForResult(),
-    ) {
-        onFlushed()
-        onClose()
-    }
 
     val requestClose: () -> Unit = {
         if (!closing) {
             closing = true
-            val sender = viewModel.flushToSystemTrash()
-            if (sender != null) {
-                trashLauncher.launch(IntentSenderRequest.Builder(sender).build())
-            } else {
+            scope.launch {
+                viewModel.commitToTrash()
+                onFlushed()
                 onClose()
             }
         }
