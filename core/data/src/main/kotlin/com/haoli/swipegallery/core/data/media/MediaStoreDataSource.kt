@@ -1,8 +1,10 @@
 package com.haoli.swipegallery.core.data.media
 
 import android.content.ContentUris
+import android.database.Cursor
 import android.content.Context
 import android.net.Uri
+import android.os.Bundle
 import android.provider.MediaStore
 import com.haoli.swipegallery.core.model.LibrarySnapshot
 import com.haoli.swipegallery.core.model.MediaAlbum
@@ -35,11 +37,10 @@ class MediaStoreDataSource @Inject constructor(
         kind: MediaKind,
         spec: SortSpec,
         albumId: Long? = null,
-        trashed: Boolean = false,
         nameQuery: String = "",
     ): List<MediaItem> {
+        val (selection, args) = buildSelection(kind, albumId, nameQuery)
         val result = ArrayList<MediaItem>(256)
-        val (selection, args) = buildSelection(kind, albumId, trashed, nameQuery)
 
         resolver.query(
             collectionFor(kind),
@@ -47,54 +48,90 @@ class MediaStoreDataSource @Inject constructor(
             selection,
             args,
             sortOrderFor(spec, kind),
-        )?.use { cursor ->
-            val idIdx = cursor.getColumnIndex(MediaStore.MediaColumns._ID)
-            val nameIdx = cursor.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
-            val sizeIdx = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE)
-            val addedIdx = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED)
-            val takenIdx = cursor.getColumnIndex(dateTakenColumn(kind))
-            val widthIdx = cursor.getColumnIndex(MediaStore.MediaColumns.WIDTH)
-            val heightIdx = cursor.getColumnIndex(MediaStore.MediaColumns.HEIGHT)
-            val durationIdx = if (kind == MediaKind.VIDEO) {
-                cursor.getColumnIndex(MediaStore.Video.Media.DURATION)
-            } else {
-                -1
-            }
-            val bucketIdIdx = cursor.getColumnIndex(bucketIdColumn(kind))
-            val bucketNameIdx = cursor.getColumnIndex(bucketNameColumn(kind))
-            val relativePathIdx = cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
-
-            while (cursor.moveToNext()) {
-                val id = if (idIdx >= 0) cursor.getLong(idIdx) else continue
-                val dateAddedSeconds = if (addedIdx >= 0) cursor.getLong(addedIdx) else 0L
-                val dateTakenSeconds = if (takenIdx >= 0) cursor.getLong(takenIdx) else 0L
-
-                result += MediaItem(
-                    id = id,
-                    uri = ContentUris.withAppendedId(collectionFor(kind), id).toString(),
-                    displayName = if (nameIdx >= 0) cursor.getString(nameIdx).orEmpty() else "",
-                    kind = kind,
-                    // 夹到非负：格式化函数对负数会抛异常，而 MediaStore 在某些异常状态下
-                    // 确实可能返回负值，不该让展示层为此崩溃
-                    sizeBytes = if (sizeIdx >= 0) cursor.getLong(sizeIdx).coerceAtLeast(0L) else 0L,
-                    // MediaStore 用秒，统一转成毫秒；0 视为缺失
-                    dateTakenMillis = dateTakenSeconds.takeIf { it > 0L }?.times(1000L),
-                    dateAddedMillis = dateAddedSeconds * 1000L,
-                    width = if (widthIdx >= 0) cursor.getInt(widthIdx) else 0,
-                    height = if (heightIdx >= 0) cursor.getInt(heightIdx) else 0,
-                    durationMillis = if (durationIdx >= 0) {
-                        cursor.getLong(durationIdx).coerceAtLeast(0L)
-                    } else {
-                        null
-                    },
-                    albumId = if (bucketIdIdx >= 0) cursor.getLong(bucketIdIdx) else 0L,
-                    albumName = if (bucketNameIdx >= 0) cursor.getString(bucketNameIdx).orEmpty() else "",
-                    relativePath = if (relativePathIdx >= 0) cursor.getString(relativePathIdx) else null,
-                )
-            }
-        }
+        )?.use { cursor -> readRows(cursor, kind, result) }
 
         return result
+    }
+
+    /**
+     * 查询系统回收站里的内容（图片 + 视频，按时间倒序）。
+     *
+     * **必须走 query-arg，不能只写 SQL 条件。**
+     * MediaStore 默认把 `IS_TRASHED = 1` 的行从所有操作里过滤掉 ——
+     * 光写 `IS_TRASHED = 1` 只会得到空结果，AOSP 源码里写得很明确：
+     * 「By default, trashed items are filtered away from operations.」
+     *
+     * 这正是「删掉的内容在回收站里看不到」的真正原因，
+     * 而且我当初还据此误判成「该设备不支持系统回收站」，白改了一版架构。
+     */
+    fun trashedItems(): List<MediaItem> {
+        val queryArgs = Bundle().apply {
+            putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_ONLY)
+        }
+
+        val result = ArrayList<MediaItem>(64)
+        for (kind in listOf(MediaKind.IMAGE, MediaKind.VIDEO)) {
+            resolver.query(
+                collectionFor(kind),
+                projectionFor(kind),
+                queryArgs,
+                null,
+            )?.use { cursor -> readRows(cursor, kind, result) }
+        }
+
+        // 回收站的排序在内存里做：Bundle 那套查询参数不接 sortOrder 字符串
+        return result.sortedByDescending { it.effectiveDateMillis }
+    }
+
+    /**
+     * 逐行读取。列下标在循环外算一次 ——
+     * 放在循环里对每一行重复 getColumnIndex 是明显的浪费。
+     */
+    private fun readRows(cursor: Cursor, kind: MediaKind, into: MutableList<MediaItem>) {
+        val idIdx = cursor.getColumnIndex(MediaStore.MediaColumns._ID)
+        val nameIdx = cursor.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME)
+        val sizeIdx = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE)
+        val addedIdx = cursor.getColumnIndex(MediaStore.MediaColumns.DATE_ADDED)
+        val takenIdx = cursor.getColumnIndex(dateTakenColumn(kind))
+        val widthIdx = cursor.getColumnIndex(MediaStore.MediaColumns.WIDTH)
+        val heightIdx = cursor.getColumnIndex(MediaStore.MediaColumns.HEIGHT)
+        val durationIdx = if (kind == MediaKind.VIDEO) {
+            cursor.getColumnIndex(MediaStore.Video.Media.DURATION)
+        } else {
+            -1
+        }
+        val bucketIdIdx = cursor.getColumnIndex(bucketIdColumn(kind))
+        val bucketNameIdx = cursor.getColumnIndex(bucketNameColumn(kind))
+        val relativePathIdx = cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
+
+        while (cursor.moveToNext()) {
+            val id = if (idIdx >= 0) cursor.getLong(idIdx) else continue
+            val dateAddedSeconds = if (addedIdx >= 0) cursor.getLong(addedIdx) else 0L
+            val dateTakenSeconds = if (takenIdx >= 0) cursor.getLong(takenIdx) else 0L
+
+            into += MediaItem(
+                id = id,
+                uri = ContentUris.withAppendedId(collectionFor(kind), id).toString(),
+                displayName = if (nameIdx >= 0) cursor.getString(nameIdx).orEmpty() else "",
+                kind = kind,
+                // 夹到非负：格式化函数对负数会抛异常，而 MediaStore 在某些异常状态下
+                // 确实可能返回负值，不该让展示层为此崩溃
+                sizeBytes = if (sizeIdx >= 0) cursor.getLong(sizeIdx).coerceAtLeast(0L) else 0L,
+                // MediaStore 用秒，统一转成毫秒；0 视为缺失
+                dateTakenMillis = dateTakenSeconds.takeIf { it > 0L }?.times(1000L),
+                dateAddedMillis = dateAddedSeconds * 1000L,
+                width = if (widthIdx >= 0) cursor.getInt(widthIdx) else 0,
+                height = if (heightIdx >= 0) cursor.getInt(heightIdx) else 0,
+                durationMillis = if (durationIdx >= 0) {
+                    cursor.getLong(durationIdx).coerceAtLeast(0L)
+                } else {
+                    null
+                },
+                albumId = if (bucketIdIdx >= 0) cursor.getLong(bucketIdIdx) else 0L,
+                albumName = if (bucketNameIdx >= 0) cursor.getString(bucketNameIdx).orEmpty() else "",
+                relativePath = if (relativePathIdx >= 0) cursor.getString(relativePathIdx) else null,
+            )
+        }
     }
 
     fun snapshot(): LibrarySnapshot {
@@ -274,20 +311,6 @@ class MediaStoreDataSource @Inject constructor(
         return "$column $direction, ${MediaStore.MediaColumns._ID} DESC"
     }
 
-    /**
-     * 系统回收站里的项目（图片 + 视频，按时间倒序）。
-     *
-     * 应用自己的回收站不依赖它，但设备**支持**系统回收站时，
-     * 从这里能读到用户删掉的内容，从而提供「取回」入口。
-     * 设备不支持时返回空列表 —— 界面据此隐藏对应区块。
-     */
-    fun systemTrashedItems(): List<MediaItem> {
-        val spec = SortSpec(SortField.DATE_MODIFIED, SortDirection.DESC)
-        return (
-            items(kind = MediaKind.IMAGE, spec = spec, trashed = true) +
-                items(kind = MediaKind.VIDEO, spec = spec, trashed = true)
-            ).sortedByDescending { it.effectiveDateMillis }
-    }
 
     /**
      * 拼装筛选条件与参数。
@@ -302,10 +325,9 @@ class MediaStoreDataSource @Inject constructor(
     private fun buildSelection(
         kind: MediaKind,
         albumId: Long?,
-        trashed: Boolean,
         nameQuery: String,
     ): Pair<String, Array<String>?> {
-        val clauses = mutableListOf(if (trashed) TRASHED_SELECTION else ACTIVE_SELECTION)
+        val clauses = mutableListOf(ACTIVE_SELECTION)
         val args = mutableListOf<String>()
 
         if (albumId != null) {
@@ -326,6 +348,5 @@ class MediaStoreDataSource @Inject constructor(
             "${MediaStore.MediaColumns.IS_TRASHED} = 0 AND ${MediaStore.MediaColumns.IS_PENDING} = 0"
 
         /** 系统回收站中的媒体。 */
-        const val TRASHED_SELECTION = "${MediaStore.MediaColumns.IS_TRASHED} = 1"
     }
 }

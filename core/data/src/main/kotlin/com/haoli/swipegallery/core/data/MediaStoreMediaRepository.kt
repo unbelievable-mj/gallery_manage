@@ -60,7 +60,7 @@ class MediaStoreMediaRepository @Inject constructor(
         // 不必再单独扫一遍媒体表
         val imageAlbums = dataSource.albums(MediaKind.IMAGE)
         val videoAlbums = dataSource.albums(MediaKind.VIDEO)
-        val trashed = dataSource.systemTrashedItems()
+        val trashed = dataSource.trashedItems()
 
         emit(
             StorageStats(
@@ -86,7 +86,7 @@ class MediaStoreMediaRepository @Inject constructor(
     }.flowOn(Dispatchers.IO)
 
     override fun observeTrash(): Flow<List<MediaItem>> = flow {
-        emit(dataSource.systemTrashedItems())
+        emit(dataSource.trashedItems())
     }.flowOn(Dispatchers.IO)
 
     override fun trashRequest(uris: List<String>): IntentSender? =
