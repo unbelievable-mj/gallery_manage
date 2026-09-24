@@ -66,6 +66,7 @@ fun GalleryRoute(
     onOpenViewer: (startIndex: Int) -> Unit,
     onOpenTrash: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenDuplicates: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: GalleryViewModel = viewModel(),
 ) {
