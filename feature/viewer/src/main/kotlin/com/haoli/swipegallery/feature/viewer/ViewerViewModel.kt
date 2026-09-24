@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.haoli.swipegallery.core.data.MediaRepository
+import com.haoli.swipegallery.core.data.settings.SettingsRepository
+import com.haoli.swipegallery.core.model.AppSettings
 import com.haoli.swipegallery.core.model.MediaItem
 import com.haoli.swipegallery.core.model.TriageAction
 import com.haoli.swipegallery.core.model.TriageProgress
@@ -52,6 +54,7 @@ data class ViewerUiState(
 @HiltViewModel
 class ViewerViewModel @Inject constructor(
     private val repository: MediaRepository,
+    settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ViewerUiState())
@@ -65,14 +68,22 @@ class ViewerViewModel @Inject constructor(
     private var preloadJob: Job? = null
 
     /**
-     * 预加载张数，默认 3 —— 用户明确要求「默认缓存三张」。
-     * 后续接入设置项时由外部覆盖。
+     * 预加载张数。默认 3（用户明确要求「默认缓存三张」），
+     * 启动时从设置读取覆盖。
      */
-    var preloadCount: Int = DEFAULT_PRELOAD_COUNT
+    private var preloadCount: Int = AppSettings.DEFAULT_PRELOAD_COUNT
 
     private var queueTotal = 0
     private var deletedCount = 0
     private var keptCount = 0
+
+    // 必须放在 preloadCount 声明之后：Kotlin 的初始化器按书写顺序执行，
+    // 写在前面的话，属性初始化会把这里读到的值覆盖回默认值。
+    init {
+        viewModelScope.launch {
+            preloadCount = settingsRepository.settings.first().preloadCount
+        }
+    }
 
     /** 打开查看器时注入队列与起始位置。 */
     fun start(items: List<MediaItem>, startIndex: Int) {
@@ -250,7 +261,5 @@ class ViewerViewModel @Inject constructor(
     private companion object {
         /** 2048 足以覆盖 1440p 屏的全屏显示，又不至于让大图撑爆内存。 */
         const val FULL_IMAGE_PX = 2048
-
-        const val DEFAULT_PRELOAD_COUNT = 3
     }
 }

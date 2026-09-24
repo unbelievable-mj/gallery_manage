@@ -9,15 +9,18 @@ import com.haoli.swipegallery.core.data.media.ThumbnailLoader
 import com.haoli.swipegallery.core.data.trash.TrashDao
 import com.haoli.swipegallery.core.data.trash.toMediaItem
 import com.haoli.swipegallery.core.data.trash.toTrashEntity
+import com.haoli.swipegallery.core.model.AlbumUsage
 import com.haoli.swipegallery.core.model.LibrarySnapshot
 import com.haoli.swipegallery.core.model.MediaAlbum
 import com.haoli.swipegallery.core.model.MediaItem
 import com.haoli.swipegallery.core.model.MediaKind
 import com.haoli.swipegallery.core.model.SortSpec
+import com.haoli.swipegallery.core.model.StorageStats
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -55,6 +58,36 @@ class MediaStoreMediaRepository @Inject constructor(
 
     override fun observeAlbums(kind: MediaKind): Flow<List<MediaAlbum>> = flow {
         emit(dataSource.albums(kind))
+    }.flowOn(Dispatchers.IO)
+
+    override fun observeStats(): Flow<StorageStats> = flow {
+        // 相册查询已经带了数量与占用，按类型求和就是各类型的小计，
+        // 不必再单独扫一遍媒体表
+        val imageAlbums = dataSource.albums(MediaKind.IMAGE)
+        val videoAlbums = dataSource.albums(MediaKind.VIDEO)
+        val trashed = trashDao.observeAll().first()
+
+        emit(
+            StorageStats(
+                imageCount = imageAlbums.sumOf { it.itemCount },
+                imageBytes = imageAlbums.sumOf { it.totalBytes },
+                videoCount = videoAlbums.sumOf { it.itemCount },
+                videoBytes = videoAlbums.sumOf { it.totalBytes },
+                trashedCount = trashed.size,
+                trashedBytes = trashed.sumOf { it.sizeBytes },
+                albums = (imageAlbums + videoAlbums)
+                    .map {
+                        AlbumUsage(
+                            albumId = it.id,
+                            albumName = it.name,
+                            kind = it.kind,
+                            itemCount = it.itemCount,
+                            bytes = it.totalBytes,
+                        )
+                    }
+                    .sortedByDescending { it.bytes },
+            )
+        )
     }.flowOn(Dispatchers.IO)
 
     override fun observeTrash(): Flow<List<MediaItem>> =

@@ -65,6 +65,7 @@ import com.haoli.swipegallery.core.model.SortField
 fun GalleryRoute(
     onOpenViewer: (startIndex: Int) -> Unit,
     onOpenTrash: () -> Unit,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: GalleryViewModel = viewModel(),
 ) {
@@ -96,6 +97,7 @@ fun GalleryRoute(
         onLoadThumbnail = viewModel::loadThumbnail,
         onOpenViewer = onOpenViewer,
         onOpenTrash = onOpenTrash,
+        onOpenSettings = onOpenSettings,
         modifier = modifier,
     )
 }
@@ -112,6 +114,7 @@ fun GalleryScreen(
     onLoadThumbnail: suspend (String) -> Bitmap?,
     onOpenViewer: (Int) -> Unit,
     onOpenTrash: () -> Unit,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -124,8 +127,8 @@ fun GalleryScreen(
     ) {
         GalleryHeader(
             state = state,
-            onToggleSortDirection = onToggleSortDirection,
             onOpenTrash = onOpenTrash,
+            onOpenSettings = onOpenSettings,
         )
 
         SortBar(
@@ -176,8 +179,8 @@ fun GalleryScreen(
 @Composable
 private fun GalleryHeader(
     state: GalleryUiState,
-    onToggleSortDirection: () -> Unit,
     onOpenTrash: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -202,28 +205,21 @@ private fun GalleryHeader(
             )
         }
 
-        Text(
-            text = "回收站",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier
-                .clickable(onClick = onOpenTrash)
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-        )
-
-        Surface(
-            shape = RoundedCornerShape(50),
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            modifier = Modifier.clickable(onClick = onToggleSortDirection),
-        ) {
-            Text(
-                text = if (state.sort.direction == SortDirection.DESC) "降序" else "升序",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-            )
-        }
+        HeaderAction(label = "回收站", onClick = onOpenTrash)
+        HeaderAction(label = "设置", onClick = onOpenSettings)
     }
+}
+
+@Composable
+private fun HeaderAction(label: String, onClick: () -> Unit) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+    )
 }
 
 /**
@@ -247,6 +243,21 @@ private fun SortBar(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // 升降序放在排序字段之前：它修饰的是后面选中的字段，
+        // 位置靠前读起来才顺
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = MaterialTheme.colorScheme.secondary,
+            modifier = Modifier.clickable(onClick = onToggleDirection),
+        ) {
+            Text(
+                text = if (direction == SortDirection.DESC) "降序" else "升序",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSecondary,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            )
+        }
+
         SortField.entries.forEach { field ->
             SelectableChip(
                 label = field.label,

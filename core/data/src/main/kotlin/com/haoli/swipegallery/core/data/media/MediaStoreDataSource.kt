@@ -108,35 +108,42 @@ class MediaStoreDataSource @Inject constructor(
     }
 
     /**
-     * 列出某个类型下的全部相册及其数量。
+     * 列出某个类型下的全部相册及其数量与占用。
      *
-     * MediaStore 不支持通过 ContentResolver 做 GROUP BY，只能把 bucket 列拉回来
-     * 在内存里聚合。行数等于媒体总数（万级也就几十毫秒），比逐相册发一次查询快得多。
+     * MediaStore 不支持通过 ContentResolver 做 GROUP BY，只能把 bucket 与 size 列
+     * 拉回来在内存里聚合。行数等于媒体总数（万级也就几十毫秒），比逐相册发查询快得多。
      */
     fun albums(kind: MediaKind): List<MediaAlbum> {
-        val counts = LinkedHashMap<Long, Pair<String, Int>>()
         val idColumn = bucketIdColumn(kind)
         val nameColumn = bucketNameColumn(kind)
+        val acc = LinkedHashMap<Long, Triple<String, Int, Long>>()
 
         resolver.query(
             collectionFor(kind),
-            arrayOf(idColumn, nameColumn),
+            arrayOf(idColumn, nameColumn, MediaStore.MediaColumns.SIZE),
             ACTIVE_SELECTION,
             null,
             null,
         )?.use { cursor ->
             val idIdx = cursor.getColumnIndex(idColumn)
             val nameIdx = cursor.getColumnIndex(nameColumn)
+            val sizeIdx = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE)
 
             while (cursor.moveToNext()) {
                 val id = if (idIdx >= 0) cursor.getLong(idIdx) else 0L
                 val name = if (nameIdx >= 0) cursor.getString(nameIdx).orEmpty() else ""
-                val previous = counts[id]
-                counts[id] = (previous?.first ?: name) to ((previous?.second ?: 0) + 1)
+                val size = if (sizeIdx >= 0) cursor.getLong(sizeIdx).coerceAtLeast(0L) else 0L
+
+                val previous = acc[id]
+                acc[id] = Triple(
+                    previous?.first ?: name,
+                    (previous?.second ?: 0) + 1,
+                    (previous?.third ?: 0L) + size,
+                )
             }
         }
 
-        return counts
+        return acc
             .map { (id, value) ->
                 MediaAlbum(
                     id = id,
@@ -144,6 +151,7 @@ class MediaStoreDataSource @Inject constructor(
                     name = value.first.ifBlank { "未命名相册" },
                     itemCount = value.second,
                     kind = kind,
+                    totalBytes = value.third,
                 )
             }
             .sortedWith(compareByDescending<MediaAlbum> { it.itemCount }.thenBy { it.name })

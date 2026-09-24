@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.haoli.swipegallery.core.data.MediaRepository
+import com.haoli.swipegallery.core.data.settings.SettingsRepository
 import com.haoli.swipegallery.core.model.LibrarySnapshot
 import com.haoli.swipegallery.core.model.MediaAlbum
 import com.haoli.swipegallery.core.model.MediaItem
@@ -42,10 +43,35 @@ data class GalleryUiState(
 @HiltViewModel
 class GalleryViewModel @Inject constructor(
     private val repository: MediaRepository,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(GalleryUiState())
     val state: StateFlow<GalleryUiState> = _state.asStateFlow()
+
+    init {
+        // 只把默认排序读进来，不在这里发起查询 ——
+        // 真正的首次加载由权限回调触发，没权限时查了也是空的
+        viewModelScope.launch {
+            val defaults = settingsRepository.settings.first()
+            _state.update { it.copy(sort = defaults.defaultSort) }
+        }
+    }
+
+    /**
+     * 按设置里的默认排序重新查询。
+     *
+     * 用户从设置页返回时必须调用：改了默认排序后，只有这里会把它同步到网格。
+     */
+    fun applyDefaultSort() {
+        viewModelScope.launch {
+            val defaults = settingsRepository.settings.first()
+            if (_state.value.sort != defaults.defaultSort) {
+                _state.update { it.copy(sort = defaults.defaultSort, loading = true) }
+            }
+            reload()
+        }
+    }
 
     fun onPermissionResult(granted: Boolean) {
         _state.update { it.copy(permissionGranted = granted) }

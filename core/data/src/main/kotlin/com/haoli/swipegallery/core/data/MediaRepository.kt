@@ -7,6 +7,7 @@ import com.haoli.swipegallery.core.model.MediaAlbum
 import com.haoli.swipegallery.core.model.MediaItem
 import com.haoli.swipegallery.core.model.MediaKind
 import com.haoli.swipegallery.core.model.SortSpec
+import com.haoli.swipegallery.core.model.StorageStats
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -34,6 +35,14 @@ interface MediaRepository {
 
     /** 该类型下的全部相册，按数量倒序。 */
     fun observeAlbums(kind: MediaKind): Flow<List<MediaAlbum>>
+
+    /**
+     * 存储占用统计。
+     *
+     * 单独把「回收站占用」列出来：应用回收站里的内容仍占着磁盘，
+     * 不显示的话用户会以为删除已经释放了空间。
+     */
+    fun observeStats(): Flow<StorageStats>
 
     /**
      * 回收站内容。

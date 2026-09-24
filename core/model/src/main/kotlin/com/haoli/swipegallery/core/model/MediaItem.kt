@@ -57,4 +57,35 @@ data class MediaAlbum(
     val name: String,
     val itemCount: Int,
     val kind: MediaKind,
+    /** 该相册内所有媒体的字节数之和，统计页用它排序。 */
+    val totalBytes: Long = 0L,
 )
+
+/** 单个相册的占用条目，统计页展示用。 */
+data class AlbumUsage(
+    val albumId: Long,
+    val albumName: String,
+    val kind: MediaKind,
+    val itemCount: Int,
+    val bytes: Long,
+)
+
+/**
+ * 存储占用统计。
+ *
+ * 「回收站占用」单列是因为它最容易被忽略：应用回收站里的内容
+ * 仍占着磁盘，不显示出来的话用户会以为删除已经释放了空间。
+ */
+data class StorageStats(
+    val imageCount: Int = 0,
+    val imageBytes: Long = 0L,
+    val videoCount: Int = 0,
+    val videoBytes: Long = 0L,
+    val trashedCount: Int = 0,
+    val trashedBytes: Long = 0L,
+    val albums: List<AlbumUsage> = emptyList(),
+) {
+    val totalBytes: Long get() = imageBytes + videoBytes
+    val totalCount: Int get() = imageCount + videoCount
+    val isEmpty: Boolean get() = totalCount == 0 && trashedCount == 0
+}

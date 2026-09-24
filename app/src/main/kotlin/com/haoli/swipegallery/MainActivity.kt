@@ -19,6 +19,8 @@ import com.haoli.swipegallery.core.designsystem.theme.SwipeGalleryTheme
 import com.haoli.swipegallery.feature.gallery.GalleryRoute
 import com.haoli.swipegallery.feature.gallery.GalleryViewModel
 import com.haoli.swipegallery.feature.gallery.TrashRoute
+import com.haoli.swipegallery.feature.settings.SettingsRoute
+import com.haoli.swipegallery.feature.settings.StatsRoute
 import com.haoli.swipegallery.feature.viewer.ViewerRoute
 import com.haoli.swipegallery.feature.viewer.ViewerViewModel
 import dagger.hilt.android.AndroidEntryPoint
@@ -90,6 +92,7 @@ private fun SwipeGalleryHost() {
                 destinationName = Destination.VIEWER.name
             },
             onOpenTrash = { destinationName = Destination.TRASH.name },
+            onOpenSettings = { destinationName = Destination.SETTINGS.name },
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -108,8 +111,23 @@ private fun SwipeGalleryHost() {
             },
             modifier = Modifier.fillMaxSize(),
         )
+
+        Destination.SETTINGS -> SettingsRoute(
+            onBack = {
+                // 设置里可能改了默认排序，回到网格时按新设置重新查询
+                galleryViewModel.applyDefaultSort()
+                destinationName = Destination.GALLERY.name
+            },
+            onOpenStats = { destinationName = Destination.STATS.name },
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        Destination.STATS -> StatsRoute(
+            onBack = { destinationName = Destination.SETTINGS.name },
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }
 
-/** 三个目的地。用名称字符串持久化，避免依赖枚举的序列化行为。 */
-private enum class Destination { GALLERY, VIEWER, TRASH }
+/** 目的地。用名称字符串持久化，避免依赖枚举的序列化行为。 */
+private enum class Destination { GALLERY, VIEWER, TRASH, SETTINGS, STATS }
