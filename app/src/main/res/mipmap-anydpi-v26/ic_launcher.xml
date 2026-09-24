@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  自适应图标。
+  - 前景是一张位图：108dp 画布，内容缩在中央 72dp 安全区内
+  - 底色与图片自身的背景色一致，遮罩裁切处不会出现色差
+  - 刻意不提供 monochrome 层：主题图标会把它染成单色，
+    而这里用的是插画位图，染色后只会变成一团色块
+-->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/ic_launcher_background" />
     <foreground android:drawable="@drawable/ic_launcher_foreground" />
-    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
 </adaptive-icon>

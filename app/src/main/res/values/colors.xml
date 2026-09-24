@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="window_background">#FFFBFE</color>
-    <color name="ic_launcher_background">#D85A30</color>
+    <!--
+      图标底色取自启动图自身的背景色。前景图已在安全区外留出同色补边，
+      因此无论启动器用圆形、方形还是水滴形遮罩，边缘都能无缝衔接。
+    -->
+    <color name="ic_launcher_background">#EEE3D5</color>
 </resources>
