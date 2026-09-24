@@ -157,6 +157,14 @@ fun GalleryScreen(
             )
         }
 
+        if (state.trashCount > 0) {
+            TrashBanner(
+                count = state.trashCount,
+                bytes = state.trashBytes,
+                onOpenTrash = onOpenTrash,
+            )
+        }
+
         if (partialAccess) {
             PartialAccessBanner(onRequestPermission = onRequestPermission)
         }
@@ -228,6 +236,49 @@ private fun HeaderAction(label: String, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp),
     )
+}
+
+/**
+ * 回收站提示条。
+ *
+ * 存在的理由：删除后空间不会立刻释放（内容进了回收站），
+ * 界面上如果不显示「还有多少空间被占着」，用户会以为删除根本没生效 ——
+ * 这正是之前踩过的坑。
+ */
+@Composable
+private fun TrashBanner(count: Int, bytes: Long, onOpenTrash: () -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        shape = RoundedCornerShape(10.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 4.dp)
+            .clickable(onClick = onOpenTrash),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "回收站 $count 项 · 占用 ${formatFileSize(bytes)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                Text(
+                    text = "这些内容仍占着磁盘，永久删除后才释放",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = "去清理",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
 }
 
 /**

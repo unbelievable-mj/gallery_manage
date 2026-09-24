@@ -30,6 +30,14 @@ data class GalleryUiState(
     val albumId: Long? = null,
     /** 文件名搜索词，空串表示不搜索。 */
     val query: String = "",
+    /**
+     * 回收站里的项数与占用。
+     *
+     * 单独放在状态里是因为它最容易让人困惑：删除后如果界面上看不到
+     * 「还有多少空间被占着」，用户会以为删除没生效。
+     */
+    val trashCount: Int = 0,
+    val trashBytes: Long = 0L,
     val albums: List<MediaAlbum> = emptyList(),
     val items: List<MediaItem> = emptyList(),
     val snapshot: LibrarySnapshot = LibrarySnapshot(0, 0, 0L, isStub = true),
@@ -147,6 +155,13 @@ class GalleryViewModel @Inject constructor(
             val albums = repository.observeAlbums(current.kind).first()
             val snapshot = repository.observeSnapshot().first()
 
+            // 回收站内容不随类型/相册/搜索变化，单独读一次
+            val trash = try {
+                repository.observeTrash().first()
+            } catch (_: Exception) {
+                emptyList()
+            }
+
             _state.update { previous ->
                 previous.copy(
                     items = items,
@@ -156,6 +171,8 @@ class GalleryViewModel @Inject constructor(
                     // 已选相册可能因为外部删除而消失，此时回到「全部」，
                     // 否则界面会停在一个查不出任何内容的筛选条件上
                     albumId = previous.albumId?.takeIf { id -> albums.any { it.id == id } },
+                    trashCount = trash.size,
+                    trashBytes = trash.sumOf { it.sizeBytes },
                 )
             }
         }
