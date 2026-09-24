@@ -36,14 +36,16 @@ class MediaStoreDataSource @Inject constructor(
         spec: SortSpec,
         albumId: Long? = null,
         trashed: Boolean = false,
+        nameQuery: String = "",
     ): List<MediaItem> {
         val result = ArrayList<MediaItem>(256)
+        val (selection, args) = buildSelection(kind, albumId, trashed, nameQuery)
 
         resolver.query(
             collectionFor(kind),
             projectionFor(kind),
-            selectionFor(kind, albumId, trashed),
-            albumId?.let { arrayOf(it.toString()) },
+            selection,
+            args,
             sortOrderFor(spec, kind),
         )?.use { cursor ->
             val idIdx = cursor.getColumnIndex(MediaStore.MediaColumns._ID)
@@ -288,12 +290,34 @@ class MediaStoreDataSource @Inject constructor(
     }
 
     /**
-     * 基础筛选 + 可选的相册限制。
-     * 相册用参数占位符而非字符串拼接，避免 bucket 名里出现引号时把 SQL 拼坏。
+     * 拼装筛选条件与参数。
+     *
+     * 全部用参数占位符而非字符串拼接 —— 相册名与搜索词都可能带引号，
+     * 拼进去会把 SQL 弄坏，甚至变成注入点。
+     *
+     * 搜索不做 LIKE 通配符转义：文件名里 `_` 很常见（`IMG_1234.jpg`），
+     * 转义反而让「搜 IMG_1234 搜不到」变得费解；而 `_` 作为通配符
+     * 多匹配几个字符在实际使用中无害。
      */
-    private fun selectionFor(kind: MediaKind, albumId: Long?, trashed: Boolean): String {
-        val base = if (trashed) TRASHED_SELECTION else ACTIVE_SELECTION
-        return if (albumId == null) base else "$base AND ${bucketIdColumn(kind)} = ?"
+    private fun buildSelection(
+        kind: MediaKind,
+        albumId: Long?,
+        trashed: Boolean,
+        nameQuery: String,
+    ): Pair<String, Array<String>?> {
+        val clauses = mutableListOf(if (trashed) TRASHED_SELECTION else ACTIVE_SELECTION)
+        val args = mutableListOf<String>()
+
+        if (albumId != null) {
+            clauses += "${bucketIdColumn(kind)} = ?"
+            args += albumId.toString()
+        }
+        if (nameQuery.isNotBlank()) {
+            clauses += "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?"
+            args += "%$nameQuery%"
+        }
+
+        return clauses.joinToString(" AND ") to args.takeIf { it.isNotEmpty() }?.toTypedArray()
     }
 
     private companion object {

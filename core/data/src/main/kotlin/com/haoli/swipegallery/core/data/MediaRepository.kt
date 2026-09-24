@@ -25,12 +25,14 @@ interface MediaRepository {
     /**
      * 按类型与排序规则取媒体列表。滑卡队列由它生成。
      * [albumId] 非空时只返回该相册内的媒体。
+     * [nameQuery] 非空时按文件名模糊匹配。
      * 结果会**剔除回收站里的项**，因此用户看到的就是「还没被删的」。
      */
     fun observeItems(
         kind: MediaKind,
         sort: SortSpec,
         albumId: Long? = null,
+        nameQuery: String = "",
     ): Flow<List<MediaItem>>
 
     /** 该类型下的全部相册，按数量倒序。 */

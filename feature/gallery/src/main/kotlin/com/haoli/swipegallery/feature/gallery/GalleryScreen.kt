@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -40,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -94,6 +96,7 @@ fun GalleryRoute(
         onSortFieldChange = viewModel::setSortField,
         onToggleSortDirection = viewModel::toggleSortDirection,
         onSelectAlbum = viewModel::selectAlbum,
+        onQueryChange = viewModel::setQuery,
         onLoadThumbnail = viewModel::loadThumbnail,
         onOpenViewer = onOpenViewer,
         onOpenTrash = onOpenTrash,
@@ -111,6 +114,7 @@ fun GalleryScreen(
     onSortFieldChange: (SortField) -> Unit,
     onToggleSortDirection: () -> Unit,
     onSelectAlbum: (Long?) -> Unit,
+    onQueryChange: (String) -> Unit,
     onLoadThumbnail: suspend (String) -> Bitmap?,
     onOpenViewer: (Int) -> Unit,
     onOpenTrash: () -> Unit,
@@ -130,6 +134,10 @@ fun GalleryScreen(
             onOpenTrash = onOpenTrash,
             onOpenSettings = onOpenSettings,
         )
+
+        // 放在相册筛选之后：搜索是在当前类型 + 相册范围内进一步收窄，
+        // 位置在它们下方语义才对
+        SearchBar(query = state.query, onQueryChange = onQueryChange)
 
         SortBar(
             current = state.sort.field,
@@ -164,7 +172,7 @@ fun GalleryScreen(
                     CircularProgressIndicator()
                 }
 
-                state.items.isEmpty() -> EmptyState(kind = state.kind)
+                state.items.isEmpty() -> EmptyState(kind = state.kind, query = state.query)
 
                 else -> MediaGrid(
                     items = state.items,
@@ -325,6 +333,61 @@ private fun AlbumBar(
                 selected = album.id == selectedAlbumId,
                 onClick = { onSelect(album.id) },
             )
+        }
+    }
+}
+
+/**
+ * 文件名搜索框。
+ *
+ * 用 BasicTextField 自己拼外观而非 Material3 的 TextField：
+ * 后者的高度与内边距固定，放进这一列 chip 里会显得格外臃肿。
+ */
+@Composable
+private fun SearchBar(query: String, onQueryChange: (String) -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 4.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            BasicTextField(
+                value = query,
+                onValueChange = onQueryChange,
+                singleLine = true,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                    color = MaterialTheme.colorScheme.onSurface,
+                ),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                modifier = Modifier.weight(1f),
+                decorationBox = { innerTextField ->
+                    Box {
+                        if (query.isEmpty()) {
+                            Text(
+                                text = "搜索文件名",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        innerTextField()
+                    }
+                },
+            )
+
+            if (query.isNotEmpty()) {
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = "清除",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.clickable { onQueryChange("") },
+                )
+            }
         }
     }
 }
@@ -532,14 +595,25 @@ private fun PermissionPrompt(onRequestPermission: () -> Unit) {
     }
 }
 
+/**
+ * 空状态。
+ *
+ * 必须区分「图库本来就空」与「搜索没匹配上」—— 否则用户搜了个错词，
+ * 界面却告诉他「本机没有找到图片」，会让人以为照片丢了。
+ */
 @Composable
-private fun EmptyState(kind: MediaKind) {
+private fun EmptyState(kind: MediaKind, query: String) {
+    val noun = if (kind == MediaKind.IMAGE) "图片" else "视频"
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = if (kind == MediaKind.IMAGE) "本机没有找到图片" else "本机没有找到视频",
+            text = if (query.isNotBlank()) {
+                "没有匹配「$query」的$noun"
+            } else {
+                "本机没有找到$noun"
+            },
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

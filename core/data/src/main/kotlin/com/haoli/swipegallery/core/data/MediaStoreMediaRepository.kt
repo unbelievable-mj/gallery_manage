@@ -49,11 +49,15 @@ class MediaStoreMediaRepository @Inject constructor(
         kind: MediaKind,
         sort: SortSpec,
         albumId: Long?,
+        nameQuery: String,
     ): Flow<List<MediaItem>> = flow {
         // 回收站里的项仍然存在于 MediaStore，必须在这里剔除，
         // 否则用户「删掉」的内容会立刻重新出现在网格里
         val hidden = trashDao.allMediaIds().toHashSet()
-        emit(dataSource.items(kind, sort, albumId).filterNot { it.id in hidden })
+        emit(
+            dataSource.items(kind, sort, albumId, nameQuery = nameQuery)
+                .filterNot { it.id in hidden }
+        )
     }.flowOn(Dispatchers.IO)
 
     override fun observeAlbums(kind: MediaKind): Flow<List<MediaAlbum>> = flow {

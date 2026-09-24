@@ -1,6 +1,9 @@
 package com.haoli.swipegallery.feature.viewer
 
+import android.app.Activity
+import android.content.Context
 import android.graphics.Bitmap
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
@@ -40,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -74,15 +78,23 @@ fun ViewerRoute(
     val scope = rememberCoroutineScope()
     var closing by remember { mutableStateOf(false) }
 
+    val context = LocalContext.current
+
     // 移动要改写文件的 RELATIVE_PATH，必须先拿到系统授予的写权限。
     // 一次会话只弹一次框，用户同意后整批执行。
     val moveLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult(),
-    ) {
-        // 无论用户是否同意都要收尾：同意则文件已移动，
-        // 拒绝则它们留在原处 —— 两种情况列表都需要重新查询
+    ) { result ->
         scope.launch {
-            viewModel.performMoves()
+            val approved = result.resultCode == Activity.RESULT_OK
+            val moved = if (approved) {
+                viewModel.performMoves()
+            } else {
+                // 用户拒绝了写权限：文件留在原处，且不再追问第二次
+                viewModel.discardMoves()
+                0
+            }
+            notifySummary(context, viewModel.summary(), moved = moved, denied = !approved)
             onFlushed()
             onClose()
         }
@@ -100,6 +112,7 @@ fun ViewerRoute(
                 if (sender != null) {
                     moveLauncher.launch(IntentSenderRequest.Builder(sender).build())
                 } else {
+                    notifySummary(context, viewModel.summary(), moved = 0, denied = false)
                     onFlushed()
                     onClose()
                 }
@@ -118,6 +131,34 @@ fun ViewerRoute(
         onPageChanged = viewModel::onPageChanged,
         modifier = modifier,
     )
+}
+
+/**
+ * 退出时给用户一个交代。
+ *
+ * 没有这个提示的话，用户滑完一轮完全不知道发生了什么 ——
+ * 尤其是移动被系统授权框拦下时，文件其实没动，界面上却看不出来。
+ */
+private fun notifySummary(
+    context: Context,
+    summary: TriageSummary,
+    moved: Int,
+    denied: Boolean,
+) {
+    val parts = buildList {
+        if (summary.deleted > 0) {
+            add("移入回收站 ${summary.deleted} 项")
+        }
+        when {
+            denied && summary.moved > 0 ->
+                add("${summary.moved} 项未移动（已取消授权）")
+
+            moved > 0 ->
+                add("移到「${summary.moveTargetName.orEmpty()}」$moved 项")
+        }
+    }
+    val text = if (parts.isEmpty()) "本次没有改动" else parts.joinToString("  ·  ")
+    Toast.makeText(context, text, Toast.LENGTH_LONG).show()
 }
 
 @Composable

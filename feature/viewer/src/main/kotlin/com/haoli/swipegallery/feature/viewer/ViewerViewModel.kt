@@ -23,6 +23,21 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/**
+ * 一次滑卡会话的结果摘要。
+ *
+ * 退出查看器时用它给用户一个交代 —— 否则「删了几张、移了几张」
+ * 全靠用户自己回忆，尤其是移动被系统授权框拦下时完全无感。
+ */
+data class TriageSummary(
+    val deleted: Int = 0,
+    val moved: Int = 0,
+    val kept: Int = 0,
+    val moveTargetName: String? = null,
+) {
+    val hasChanges: Boolean get() = deleted > 0 || moved > 0
+}
+
 /** 用户在卡片上滑动的方向。 */
 enum class SwipeDirection { UP, DOWN }
 
@@ -268,6 +283,25 @@ class ViewerViewModel @Inject constructor(
         val targets = pendingTrash.toList()
         pendingTrash.clear()
         repository.addToTrash(targets)
+    }
+
+    /** 当前会话的结果摘要。 */
+    fun summary(): TriageSummary = TriageSummary(
+        deleted = deletedCount,
+        // keptCount 把「原地保留」与「移动」都算进去了，这里要减掉
+        kept = (keptCount - movedCount).coerceAtLeast(0),
+        moved = movedCount,
+        moveTargetName = moveTarget?.albumName,
+    )
+
+    /**
+     * 用户在授权框里拒绝时调用：文件留在原处，只清掉待移动队列。
+     *
+     * 不清的话队列会一直留着，下次退出时会再次弹出授权框 ——
+     * 用户已经拒绝过一次了，不该再问第二遍。
+     */
+    fun discardMoves() {
+        pendingMoves.clear()
     }
 
     /**

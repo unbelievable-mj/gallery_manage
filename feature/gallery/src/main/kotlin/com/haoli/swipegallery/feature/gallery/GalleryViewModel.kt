@@ -16,6 +16,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
@@ -26,6 +28,8 @@ data class GalleryUiState(
     val sort: SortSpec = SortSpec(),
     /** null 表示「全部」，不做相册过滤。 */
     val albumId: Long? = null,
+    /** 文件名搜索词，空串表示不搜索。 */
+    val query: String = "",
     val albums: List<MediaAlbum> = emptyList(),
     val items: List<MediaItem> = emptyList(),
     val snapshot: LibrarySnapshot = LibrarySnapshot(0, 0, 0L, isStub = true),
@@ -48,6 +52,9 @@ class GalleryViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(GalleryUiState())
     val state: StateFlow<GalleryUiState> = _state.asStateFlow()
+
+    /** 持有当前查询任务，新的查询会取消上一次。 */
+    private var reloadJob: Job? = null
 
     init {
         // 只把默认排序读进来，不在这里发起查询 ——
@@ -85,6 +92,15 @@ class GalleryViewModel @Inject constructor(
         reload()
     }
 
+    /**
+     * 设置搜索词。带防抖，输入过程中不会每敲一下都查库。
+     */
+    fun setQuery(query: String) {
+        if (_state.value.query == query) return
+        _state.update { it.copy(query = query, loading = true) }
+        reload(debounceMs = SEARCH_DEBOUNCE_MS)
+    }
+
     /** [albumId] 传 null 表示回到「全部」。 */
     fun selectAlbum(albumId: Long?) {
         if (_state.value.albumId == albumId) return
@@ -113,10 +129,21 @@ class GalleryViewModel @Inject constructor(
      * 滑卡模式退出后必须调用一次 —— 阶段二的删除可能已经真正落盘，
      * 列表需要与系统状态对齐。
      */
-    fun reload() {
-        viewModelScope.launch {
+    /**
+     * 重新查询。
+     *
+     * [debounceMs] 供搜索输入使用：每敲一个字符都扫一遍全库太浪费。
+     * 顺带取消上一次查询，避免慢的旧结果覆盖快的新结果。
+     */
+    fun reload(debounceMs: Long = 0L) {
+        reloadJob?.cancel()
+        reloadJob = viewModelScope.launch {
+            if (debounceMs > 0L) delay(debounceMs)
+
             val current = _state.value
-            val items = repository.observeItems(current.kind, current.sort, current.albumId).first()
+            val items = repository
+                .observeItems(current.kind, current.sort, current.albumId, current.query)
+                .first()
             val albums = repository.observeAlbums(current.kind).first()
             val snapshot = repository.observeSnapshot().first()
 
@@ -140,5 +167,8 @@ class GalleryViewModel @Inject constructor(
     private companion object {
         /** 三列网格在 1080p 屏上约 360px/格，取 320 兼顾清晰度与内存。 */
         const val THUMBNAIL_PX = 320
+
+        /** 搜索防抖窗口：短于用户两次按键的间隔，又不至于让结果显得迟钝。 */
+        const val SEARCH_DEBOUNCE_MS = 250L
     }
 }
