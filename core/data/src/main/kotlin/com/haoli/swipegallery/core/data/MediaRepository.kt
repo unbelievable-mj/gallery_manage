@@ -56,10 +56,22 @@ interface MediaRepository {
     suspend fun fullImage(uri: String, maxSizePx: Int): Bitmap?
 
     /**
-     * 构造永久删除请求。跳过回收站，不可恢复。
+     * 构造删除请求：**优先移入系统回收站，设备不支持时退回永久删除**。
      *
-     * **只在用户于回收站页面明确选择「彻底删除」时调用。**
-     * 滑卡删除绝不会走到这里 —— 那是数据丢失的唯一来源。
+     * **只在用户于回收站页面明确点「删除」时调用。**
+     * 滑卡删除绝不会走到这里 —— 那时没有二次确认，一旦系统行为不符预期就是静默丢数据。
      */
-    fun deleteRequest(uris: List<String>): IntentSender?
+    fun purgeRequest(uris: List<String>): IntentSender?
+
+    /** 从系统回收站取回（设备支持回收站时才有意义）。 */
+    fun untrashRequest(uris: List<String>): IntentSender?
+
+    /**
+     * 系统回收站中的内容。
+     *
+     * 设备不支持系统回收站时返回空列表，界面据此隐藏对应区块。
+     * 这也顺便成了一个诊断信号：如果这里始终为空，
+     * 说明该设备/存储卷没有实现回收站。
+     */
+    fun observeSystemTrash(): Flow<List<MediaItem>>
 }

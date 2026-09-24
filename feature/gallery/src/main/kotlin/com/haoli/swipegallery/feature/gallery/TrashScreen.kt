@@ -26,7 +26,9 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -54,8 +56,9 @@ import com.haoli.swipegallery.core.model.MediaItem
 /**
  * 回收站入口。
  *
- * 「恢复」是纯本地操作，瞬时完成；
- * 「彻底删除」会拉起系统确认框 —— 全应用只有这一条路径会真正销毁文件。
+ * 两个区块语义不同，界面上要分开：
+ *  - **应用回收站**：滑卡删除的内容先到这里，文件尚未真正移除，可多选恢复或删除
+ *  - **系统回收站**：在应用里点「删除」后内容交给系统，设备支持时能在这里看到并取回
  */
 @Composable
 fun TrashRoute(
@@ -77,6 +80,12 @@ fun TrashRoute(
         }
     }
 
+    val restoreLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult(),
+    ) {
+        viewModel.onSystemRestoreFinished()
+    }
+
     BackHandler { onBack() }
 
     TrashScreen(
@@ -90,6 +99,12 @@ fun TrashRoute(
             val sender = viewModel.purgeSelected()
             if (sender != null) {
                 purgeLauncher.launch(IntentSenderRequest.Builder(sender).build())
+            }
+        },
+        onRestoreSystemItem = { item ->
+            val sender = viewModel.restoreSystemItem(item)
+            if (sender != null) {
+                restoreLauncher.launch(IntentSenderRequest.Builder(sender).build())
             }
         },
         onLoadThumbnail = viewModel::loadThumbnail,
@@ -106,6 +121,7 @@ fun TrashScreen(
     onClearSelection: () -> Unit,
     onRestore: () -> Unit,
     onPurge: () -> Unit,
+    onRestoreSystemItem: (MediaItem) -> Unit,
     onLoadThumbnail: suspend (String) -> Bitmap?,
     modifier: Modifier = Modifier,
 ) {
@@ -116,7 +132,7 @@ fun TrashScreen(
             .windowInsetsPadding(WindowInsets.systemBars),
     ) {
         TrashTopBar(
-            count = state.items.size,
+            count = state.appItems.size,
             allSelected = state.allSelected,
             hasSelection = state.hasSelection,
             onBack = onBack,
@@ -133,7 +149,7 @@ fun TrashScreen(
                     CircularProgressIndicator()
                 }
 
-                state.items.isEmpty() -> EmptyTrash()
+                state.isEmpty -> EmptyTrash()
 
                 else -> LazyVerticalGrid(
                     columns = GridCells.Fixed(3),
@@ -142,16 +158,46 @@ fun TrashScreen(
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    itemsIndexed(
-                        items = state.items,
-                        key = { _, item -> item.id },
-                    ) { _, item ->
-                        TrashCell(
-                            item = item,
-                            selected = item.id in state.selectedIds,
-                            onClick = { onToggleSelection(item.id) },
-                            onLoadThumbnail = onLoadThumbnail,
-                        )
+                    if (state.appItems.isNotEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            SectionHeader(
+                                title = "应用回收站",
+                                subtitle = "文件尚未真正移除，恢复是瞬时的",
+                            )
+                        }
+                        itemsIndexed(
+                            items = state.appItems,
+                            key = { _, item -> "app-${item.id}" },
+                        ) { _, item ->
+                            TrashCell(
+                                item = item,
+                                selected = item.id in state.selectedIds,
+                                badge = null,
+                                onClick = { onToggleSelection(item.id) },
+                                onLoadThumbnail = onLoadThumbnail,
+                            )
+                        }
+                    }
+
+                    if (state.systemItems.isNotEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            SectionHeader(
+                                title = "系统回收站",
+                                subtitle = "点击任一项即可取回",
+                            )
+                        }
+                        items(
+                            items = state.systemItems,
+                            key = { item -> "sys-${item.id}" },
+                        ) { item ->
+                            TrashCell(
+                                item = item,
+                                selected = false,
+                                badge = "取回",
+                                onClick = { onRestoreSystemItem(item) },
+                                onLoadThumbnail = onLoadThumbnail,
+                            )
+                        }
                     }
                 }
             }
@@ -197,7 +243,7 @@ private fun TrashTopBar(
                 style = MaterialTheme.typography.titleLarge,
             )
             Text(
-                text = if (count == 0) "空" else "$count 项 · 仍占用空间，彻底删除后才释放",
+                text = if (count == 0) "应用回收站为空" else "$count 项待处理",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -217,9 +263,29 @@ private fun TrashTopBar(
 }
 
 @Composable
+private fun SectionHeader(title: String, subtitle: String) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 6.dp),
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Text(
+            text = subtitle,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
 private fun TrashCell(
     item: MediaItem,
     selected: Boolean,
+    badge: String?,
     onClick: () -> Unit,
     onLoadThumbnail: suspend (String) -> Bitmap?,
 ) {
@@ -269,6 +335,20 @@ private fun TrashCell(
                 )
             }
         }
+
+        badge?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.labelSmall,
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .padding(vertical = 3.dp),
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }
 
@@ -283,15 +363,12 @@ private fun TrashActionBar(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column {
-            Row(
+            Text(
+                text = "删除后内容会移入系统回收站（设备支持时），否则将被永久移除",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 10.dp),
-            ) {
-                Text(
-                    text = "彻底删除会永久移除文件，不可恢复",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            )
             Row(
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -304,7 +381,7 @@ private fun TrashActionBar(
                     modifier = Modifier.weight(1f),
                 )
                 ActionButton(
-                    label = "彻底删除",
+                    label = "删除",
                     container = MaterialTheme.colorScheme.errorContainer,
                     content = MaterialTheme.colorScheme.onErrorContainer,
                     onClick = onPurge,
@@ -357,7 +434,7 @@ private fun EmptyTrash() {
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "滑卡删除的内容会先进入这里，可以随时取回。\n只有在这里点「彻底删除」才会真正移除文件。",
+                text = "滑卡删除的内容会先进入这里，可以随时取回；\n只有点「删除」之后文件才会真正离开设备。",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,

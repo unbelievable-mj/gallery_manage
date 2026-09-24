@@ -246,6 +246,21 @@ class MediaStoreDataSource @Inject constructor(
     }
 
     /**
+     * 系统回收站里的项目（图片 + 视频，按时间倒序）。
+     *
+     * 应用自己的回收站不依赖它，但设备**支持**系统回收站时，
+     * 从这里能读到用户删掉的内容，从而提供「取回」入口。
+     * 设备不支持时返回空列表 —— 界面据此隐藏对应区块。
+     */
+    fun systemTrashedItems(): List<MediaItem> {
+        val spec = SortSpec(SortField.DATE_MODIFIED, SortDirection.DESC)
+        return (
+            items(kind = MediaKind.IMAGE, spec = spec, trashed = true) +
+                items(kind = MediaKind.VIDEO, spec = spec, trashed = true)
+            ).sortedByDescending { it.effectiveDateMillis }
+    }
+
+    /**
      * 基础筛选 + 可选的相册限制。
      * 相册用参数占位符而非字符串拼接，避免 bucket 名里出现引号时把 SQL 拼坏。
      */
@@ -259,12 +274,7 @@ class MediaStoreDataSource @Inject constructor(
         const val ACTIVE_SELECTION =
             "${MediaStore.MediaColumns.IS_TRASHED} = 0 AND ${MediaStore.MediaColumns.IS_PENDING} = 0"
 
-        /**
-         * 系统回收站中的媒体。
-         *
-         * 保留这个分支是给「系统回收站」查询留的口子 —— 应用自己的回收站
-         * 不依赖它，但排查 ROM 行为时用得上。
-         */
+        /** 系统回收站中的媒体。 */
         const val TRASHED_SELECTION = "${MediaStore.MediaColumns.IS_TRASHED} = 1"
     }
 }

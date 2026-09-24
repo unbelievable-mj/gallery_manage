@@ -81,5 +81,11 @@ class MediaStoreMediaRepository @Inject constructor(
     override suspend fun fullImage(uri: String, maxSizePx: Int): Bitmap? =
         fullImageLoader.load(uri, maxSizePx)
 
-    override fun deleteRequest(uris: List<String>): IntentSender? = mediaOperator.deleteRequest(uris)
+    override fun purgeRequest(uris: List<String>): IntentSender? = mediaOperator.purgeRequest(uris)
+
+    override fun untrashRequest(uris: List<String>): IntentSender? = mediaOperator.untrashRequest(uris)
+
+    override fun observeSystemTrash(): Flow<List<MediaItem>> = flow {
+        emit(dataSource.systemTrashedItems())
+    }.flowOn(Dispatchers.IO)
 }
