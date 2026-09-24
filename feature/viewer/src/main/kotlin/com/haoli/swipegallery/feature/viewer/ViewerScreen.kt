@@ -144,6 +144,7 @@ fun ViewerScreen(
                 } else {
                     TriagePager(
                         items = state.items,
+                        initialIndex = state.currentIndex,
                         onSwipe = onSwipe,
                         onLoadFullImage = onLoadFullImage,
                         onPageChanged = onPageChanged,
@@ -161,11 +162,18 @@ fun ViewerScreen(
 @Composable
 private fun TriagePager(
     items: List<MediaItem>,
+    initialIndex: Int,
     onSwipe: (SwipeDirection) -> Unit,
     onLoadFullImage: suspend (String) -> Bitmap?,
     onPageChanged: (Int) -> Unit,
 ) {
-    val pagerState = rememberPagerState(pageCount = { items.size })
+    // initialPage 必须取队列里的起始位置。
+    // 不传的话 Pager 永远从第 0 页开始 —— 用户点第 50 张进去，也会从第一张开始处理，
+    // 而且下面的 LaunchedEffect 会把 currentIndex 一并改回 0，起始位置就此丢失。
+    val pagerState = rememberPagerState(
+        initialPage = initialIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0)),
+        pageCount = { items.size },
+    )
 
     // 通知外部当前页变化，用于铺预加载与更新进度
     LaunchedEffect(pagerState.currentPage) {

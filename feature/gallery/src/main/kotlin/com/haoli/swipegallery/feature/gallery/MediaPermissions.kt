@@ -1,9 +1,14 @@
 package com.haoli.swipegallery.feature.gallery
 
 import android.Manifest
+import android.app.AppOpsManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.os.Process
+import android.provider.Settings
 import androidx.core.content.ContextCompat
 
 /**
@@ -69,3 +74,55 @@ fun isPartialMediaAccess(context: Context): Boolean {
 
     return selectedGranted && !fullGranted
 }
+
+/**
+ * 是否已获得「媒体管理」特殊权限。
+ *
+ * 拿到它之后，`createTrashRequest` / `createWriteRequest` / `createDeleteRequest`
+ * 都不再逐次弹出系统确认框 —— 这是「滑卡不被打断」的关键。
+ * 官方文档明确：应用以 Android 12（API 31）或更高为目标平台时才能申请该权限。
+ *
+ * 判定优先用 AppOps：`checkSelfPermission` 对「特殊应用权限」不一定可靠，
+ * 可能在实际已授权时仍返回 DENIED，导致界面一直提示去授权。
+ */
+fun hasManageMediaPermission(context: Context): Boolean {
+    val viaAppOps = runCatching {
+        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        appOps.unsafeCheckOpNoThrow(
+            MANAGE_MEDIA_OP,
+            Process.myUid(),
+            context.packageName,
+        ) == AppOpsManager.MODE_ALLOWED
+    }.getOrNull()
+
+    return viaAppOps ?: (
+        ContextCompat.checkSelfPermission(context, Manifest.permission.MANAGE_MEDIA) ==
+            PackageManager.PERMISSION_GRANTED
+        )
+}
+
+/**
+ * 跳转到「媒体管理应用」特殊权限页。
+ *
+ * 用字符串常量而非 `Settings.ACTION_REQUEST_MANAGE_MEDIA`：
+ * 后者在部分 SDK 里常量名不确定，写错会直接编译失败。
+ * 这里按优先级逐个尝试，失败就降级到应用详情页 —— 用户在权限列表里同样能找到它。
+ */
+fun openManageMediaSettings(context: Context) {
+    for (action in MANAGE_MEDIA_SETTINGS_ACTIONS) {
+        val intent = Intent(action).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (action == Settings.ACTION_APPLICATION_DETAILS_SETTINGS) {
+                data = Uri.fromParts("package", context.packageName, null)
+            }
+        }
+        if (runCatching { context.startActivity(intent) }.isSuccess) return
+    }
+}
+
+private const val MANAGE_MEDIA_OP = "android:manage_media"
+
+private val MANAGE_MEDIA_SETTINGS_ACTIONS = listOf(
+    "android.settings.REQUEST_MANAGE_MEDIA",
+    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+)

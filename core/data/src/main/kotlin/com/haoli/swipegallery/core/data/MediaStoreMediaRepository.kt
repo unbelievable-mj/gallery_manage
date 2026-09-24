@@ -49,6 +49,10 @@ class MediaStoreMediaRepository @Inject constructor(
         emit(dataSource.albums(kind))
     }.flowOn(Dispatchers.IO)
 
+    override fun observeTrashed(): Flow<List<MediaItem>> = flow {
+        emit(dataSource.trashedItems())
+    }.flowOn(Dispatchers.IO)
+
     override suspend fun thumbnail(uri: String, sizePx: Int): Bitmap? =
         thumbnailLoader.load(uri, sizePx)
 

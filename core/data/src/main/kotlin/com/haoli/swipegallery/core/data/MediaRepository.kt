@@ -34,6 +34,15 @@ interface MediaRepository {
     /** 该类型下的全部相册，按数量倒序。 */
     fun observeAlbums(kind: MediaKind): Flow<List<MediaAlbum>>
 
+    /**
+     * 系统回收站中的项目（图片 + 视频，按时间倒序）。
+     *
+     * 删除走的是 `createTrashRequest`，内容会进系统回收站而不是被永久删除，
+     * 但被回收站收纳的文件不会出现在常规查询里。这个方法让那部分内容可见，
+     * 用户才能确认「删掉的东西还在、可以取回」。
+     */
+    fun observeTrashed(): Flow<List<MediaItem>>
+
     /** 网格用缩略图。图片与视频都走同一条路径。 */
     suspend fun thumbnail(uri: String, sizePx: Int): Bitmap?
 

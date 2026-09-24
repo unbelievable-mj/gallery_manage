@@ -18,6 +18,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haoli.swipegallery.core.designsystem.theme.SwipeGalleryTheme
 import com.haoli.swipegallery.feature.gallery.GalleryRoute
 import com.haoli.swipegallery.feature.gallery.GalleryViewModel
+import com.haoli.swipegallery.feature.gallery.TrashRoute
 import com.haoli.swipegallery.feature.viewer.ViewerRoute
 import com.haoli.swipegallery.feature.viewer.ViewerViewModel
 import dagger.hilt.android.AndroidEntryPoint
@@ -73,26 +74,42 @@ private fun SwipeGalleryHost() {
     val galleryState by galleryViewModel.state.collectAsStateWithLifecycle()
     val viewerViewModel: ViewerViewModel = viewModel()
 
-    // 用 rememberSaveable：旋转屏幕后仍然停在查看器里。
-    // 队列本身存在 ViewerViewModel（Activity 作用域）中，不会丢。
-    var viewerOpen by rememberSaveable { mutableStateOf(false) }
+    // 用 rememberSaveable 记住目的地：旋转屏幕后不会莫名其妙跳回网格。
+    // 查看器队列与回收站列表分别存在各自的 ViewModel（Activity 作用域）里，不会丢。
+    // 存字符串而非枚举，避免依赖 rememberSaveable 对枚举的序列化支持。
+    var destinationName by rememberSaveable { mutableStateOf(Destination.GALLERY.name) }
+    val destination = runCatching { Destination.valueOf(destinationName) }
+        .getOrDefault(Destination.GALLERY)
 
-    if (viewerOpen) {
-        ViewerRoute(
-            onClose = { viewerOpen = false },
-            // 阶段二提交后必须重新查询，让网格与系统真实状态对齐
-            onFlushed = { galleryViewModel.reload() },
-            modifier = Modifier.fillMaxSize(),
-        )
-    } else {
-        GalleryRoute(
+    when (destination) {
+        Destination.GALLERY -> GalleryRoute(
             onOpenViewer = { index ->
                 // 点击时才注入队列。若放在 ViewerRoute 里用 LaunchedEffect 注入，
                 // 旋转屏幕后组合重建会用空列表覆盖掉已有队列。
                 viewerViewModel.start(galleryState.items, index)
-                viewerOpen = true
+                destinationName = Destination.VIEWER.name
+            },
+            onOpenTrash = { destinationName = Destination.TRASH.name },
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        Destination.VIEWER -> ViewerRoute(
+            onClose = { destinationName = Destination.GALLERY.name },
+            // 阶段二提交后必须重新查询，让网格与系统真实状态对齐
+            onFlushed = { galleryViewModel.reload() },
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        Destination.TRASH -> TrashRoute(
+            onBack = {
+                // 回收站里可能取回了内容，回到网格前要重新查询
+                galleryViewModel.reload()
+                destinationName = Destination.GALLERY.name
             },
             modifier = Modifier.fillMaxSize(),
         )
     }
 }
+
+/** 三个目的地。用名称字符串持久化，避免依赖枚举的序列化行为。 */
+private enum class Destination { GALLERY, VIEWER, TRASH }
