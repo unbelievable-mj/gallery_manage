@@ -44,11 +44,10 @@ class MediaStoreMediaRepository @Inject constructor(
         kind: MediaKind,
         sort: SortSpec,
         albumId: Long?,
-        nameQuery: String,
     ): Flow<List<MediaItem>> = flow {
         // 不需要额外剔除已删项：查询本身就带 IS_TRASHED = 0，
         // 系统回收站里的内容不会出现在结果中
-        emit(dataSource.items(kind, sort, albumId, nameQuery = nameQuery))
+        emit(dataSource.items(kind, sort, albumId))
     }.flowOn(Dispatchers.IO)
 
     override fun observeAlbums(kind: MediaKind): Flow<List<MediaAlbum>> = flow {

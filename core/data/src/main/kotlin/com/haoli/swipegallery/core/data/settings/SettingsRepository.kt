@@ -30,6 +30,7 @@ interface SettingsRepository {
     suspend fun setPreloadCount(count: Int)
     suspend fun setMoveTarget(target: MoveTarget?)
     suspend fun setDefaultSort(field: SortField, direction: SortDirection)
+    suspend fun setDuplicateThreshold(bytes: Long)
 }
 
 /** 必须声明为 Context 的顶层扩展，DataStore 要求同一文件只创建一次实例。 */
@@ -52,6 +53,9 @@ class DataStoreSettingsRepository @Inject constructor(
                 ?: SortField.DATE_TAKEN,
             defaultSortDirection = prefs[Keys.SORT_DIRECTION].toEnumOrNull<SortDirection>()
                 ?: SortDirection.DESC,
+            duplicateThresholdBytes = prefs[Keys.DUPLICATE_THRESHOLD]
+                ?.let(AppSettings::sanitizeDuplicateThreshold)
+                ?: AppSettings.DEFAULT_DUPLICATE_THRESHOLD_BYTES,
         )
     }
 
@@ -98,6 +102,11 @@ class DataStoreSettingsRepository @Inject constructor(
         }
     }
 
+    override suspend fun setDuplicateThreshold(bytes: Long) {
+        val safe = AppSettings.sanitizeDuplicateThreshold(bytes)
+        context.settingsDataStore.edit { it[Keys.DUPLICATE_THRESHOLD] = safe }
+    }
+
     /**
      * 枚举名解析失败时返回 null 而不是抛异常。
      *
@@ -114,5 +123,6 @@ class DataStoreSettingsRepository @Inject constructor(
         val MOVE_TARGET_PATH = stringPreferencesKey("move_target_path")
         val SORT_FIELD = stringPreferencesKey("sort_field")
         val SORT_DIRECTION = stringPreferencesKey("sort_direction")
+        val DUPLICATE_THRESHOLD = longPreferencesKey("duplicate_threshold")
     }
 }

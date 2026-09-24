@@ -59,6 +59,7 @@ fun SettingsRoute(
         onSortFieldChange = viewModel::setSortField,
         onSortDirectionChange = viewModel::setSortDirection,
         onMoveTargetChange = viewModel::setMoveTarget,
+        onDuplicateThresholdChange = viewModel::setDuplicateThreshold,
         modifier = modifier,
     )
 }
@@ -72,6 +73,7 @@ fun SettingsScreen(
     onSortFieldChange: (SortField) -> Unit,
     onSortDirectionChange: (SortDirection) -> Unit,
     onMoveTargetChange: (MediaAlbum?) -> Unit,
+    onDuplicateThresholdChange: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -141,6 +143,23 @@ fun SettingsScreen(
                     options = directions.map { it.label },
                     selectedIndex = directions.indexOf(state.settings.defaultSortDirection),
                     onSelect = { index -> onSortDirectionChange(directions[index]) },
+                )
+            }
+
+            SectionTitle("查重")
+
+            SettingBlock(
+                title = "疑似重复的判定阈值",
+                description = "文件大小相差不超过这个值就算一组。调大更容易找到，" +
+                    "但也更容易把连拍误判成重复；判据只有大小，不做内容比对。",
+            ) {
+                val options = AppSettings.DUPLICATE_THRESHOLD_OPTIONS
+                ChipRow(
+                    options = options.map { it.second },
+                    selectedIndex = options.indexOfFirst {
+                        it.first == state.settings.duplicateThresholdBytes
+                    },
+                    onSelect = { index -> onDuplicateThresholdChange(options[index].first) },
                 )
             }
 

@@ -40,6 +40,13 @@ data class AppSettings(
     /** 打开图库时的默认排序。 */
     val defaultSortField: SortField = SortField.DATE_TAKEN,
     val defaultSortDirection: SortDirection = SortDirection.DESC,
+
+    /**
+     * 查重阈值：文件大小相差不超过这个字节数就算「疑似重复」。
+     *
+     * 默认 20KB —— 同一张图被不同应用重新压缩保存，体积往往只差几 KB 到几十 KB。
+     */
+    val duplicateThresholdBytes: Long = DEFAULT_DUPLICATE_THRESHOLD_BYTES,
 ) {
     val defaultSort: SortSpec
         get() = SortSpec(field = defaultSortField, direction = defaultSortDirection)
@@ -50,6 +57,29 @@ data class AppSettings(
         const val MAX_PRELOAD_COUNT = 5
 
         val PRELOAD_RANGE = MIN_PRELOAD_COUNT..MAX_PRELOAD_COUNT
+
+        const val DEFAULT_DUPLICATE_THRESHOLD_BYTES = 20L * 1024L
+
+        /**
+         * 可选的阈值档位。
+         *
+         * 用固定档位而不是滑杆：这个值用户很难有「精确」的直觉，
+         * 给几个数量级差别明显的选项反而更好选。
+         */
+        val DUPLICATE_THRESHOLD_OPTIONS = listOf(
+            5L * 1024L to "5 KB",
+            20L * 1024L to "20 KB",
+            50L * 1024L to "50 KB",
+            100L * 1024L to "100 KB",
+            500L * 1024L to "500 KB",
+        )
+
+        /** 把任意输入夹到合法范围，避免坏数据导致分组粒度失控。 */
+        fun sanitizeDuplicateThreshold(value: Long): Long {
+            val min = DUPLICATE_THRESHOLD_OPTIONS.first().first
+            val max = DUPLICATE_THRESHOLD_OPTIONS.last().first
+            return value.coerceIn(min, max)
+        }
 
         /** 把任意输入夹到合法范围，避免坏数据导致预加载失控。 */
         fun sanitizePreloadCount(value: Int): Int =

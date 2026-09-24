@@ -37,9 +37,8 @@ class MediaStoreDataSource @Inject constructor(
         kind: MediaKind,
         spec: SortSpec,
         albumId: Long? = null,
-        nameQuery: String = "",
     ): List<MediaItem> {
-        val (selection, args) = buildSelection(kind, albumId, nameQuery)
+        val (selection, args) = buildSelection(kind, albumId)
         val result = ArrayList<MediaItem>(256)
 
         resolver.query(
@@ -325,7 +324,6 @@ class MediaStoreDataSource @Inject constructor(
     private fun buildSelection(
         kind: MediaKind,
         albumId: Long?,
-        nameQuery: String,
     ): Pair<String, Array<String>?> {
         val clauses = mutableListOf(ACTIVE_SELECTION)
         val args = mutableListOf<String>()
@@ -333,10 +331,6 @@ class MediaStoreDataSource @Inject constructor(
         if (albumId != null) {
             clauses += "${bucketIdColumn(kind)} = ?"
             args += albumId.toString()
-        }
-        if (nameQuery.isNotBlank()) {
-            clauses += "${MediaStore.MediaColumns.DISPLAY_NAME} LIKE ?"
-            args += "%$nameQuery%"
         }
 
         return clauses.joinToString(" AND ") to args.takeIf { it.isNotEmpty() }?.toTypedArray()

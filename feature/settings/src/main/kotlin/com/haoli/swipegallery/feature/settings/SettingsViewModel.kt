@@ -118,4 +118,9 @@ class SettingsViewModel @Inject constructor(
             settingsRepository.setDefaultSort(_state.value.settings.defaultSortField, direction)
         }
     }
+
+    /** 查重阈值：文件大小相差不超过它就算「疑似重复」。 */
+    fun setDuplicateThreshold(bytes: Long) {
+        viewModelScope.launch { settingsRepository.setDuplicateThreshold(bytes) }
+    }
 }

@@ -18,6 +18,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haoli.swipegallery.core.designsystem.theme.SwipeGalleryTheme
 import com.haoli.swipegallery.feature.gallery.GalleryRoute
 import com.haoli.swipegallery.feature.gallery.GalleryViewModel
+import com.haoli.swipegallery.feature.gallery.DuplicateRoute
 import com.haoli.swipegallery.feature.gallery.TrashRoute
 import com.haoli.swipegallery.feature.settings.SettingsRoute
 import com.haoli.swipegallery.feature.settings.StatsRoute
@@ -92,6 +93,7 @@ private fun SwipeGalleryHost() {
                 destinationName = Destination.VIEWER.name
             },
             onOpenTrash = { destinationName = Destination.TRASH.name },
+            onOpenDuplicates = { destinationName = Destination.DUPLICATES.name },
             onOpenSettings = { destinationName = Destination.SETTINGS.name },
             modifier = Modifier.fillMaxSize(),
         )
@@ -106,6 +108,20 @@ private fun SwipeGalleryHost() {
         Destination.TRASH -> TrashRoute(
             onBack = {
                 // 回收站里可能取回了内容，回到网格前要重新查询
+                galleryViewModel.reload()
+                destinationName = Destination.GALLERY.name
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        Destination.DUPLICATES -> DuplicateRoute(
+            kind = galleryState.kind,
+            albumId = galleryState.albumId,
+            albumName = galleryState.albums
+                .firstOrNull { it.id == galleryState.albumId }
+                ?.name,
+            onBack = {
+                // 查重里可能把内容移进了回收站，回到网格前要重新查询
                 galleryViewModel.reload()
                 destinationName = Destination.GALLERY.name
             },
@@ -130,4 +146,4 @@ private fun SwipeGalleryHost() {
 }
 
 /** 目的地。用名称字符串持久化，避免依赖枚举的序列化行为。 */
-private enum class Destination { GALLERY, VIEWER, TRASH, SETTINGS, STATS }
+private enum class Destination { GALLERY, VIEWER, TRASH, DUPLICATES, SETTINGS, STATS }
