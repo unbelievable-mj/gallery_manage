@@ -3,6 +3,7 @@ package com.haoli.swipegallery.feature.viewer
 import android.content.IntentSender
 import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.haoli.swipegallery.core.data.MediaRepository
 import com.haoli.swipegallery.core.model.MediaItem
 import com.haoli.swipegallery.core.model.TriageAction
