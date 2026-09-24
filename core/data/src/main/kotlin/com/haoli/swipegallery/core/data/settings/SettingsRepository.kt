@@ -5,10 +5,11 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.haoli.swipegallery.core.model.AppSettings
-import com.haoli.swipegallery.core.model.KeepTarget
+import com.haoli.swipegallery.core.model.MoveTarget
 import com.haoli.swipegallery.core.model.SortDirection
 import com.haoli.swipegallery.core.model.SortField
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -27,7 +28,7 @@ interface SettingsRepository {
     val settings: Flow<AppSettings>
 
     suspend fun setPreloadCount(count: Int)
-    suspend fun setKeepTarget(target: KeepTarget)
+    suspend fun setMoveTarget(target: MoveTarget?)
     suspend fun setDefaultSort(field: SortField, direction: SortDirection)
 }
 
@@ -46,12 +47,28 @@ class DataStoreSettingsRepository @Inject constructor(
             preloadCount = prefs[Keys.PRELOAD_COUNT]
                 ?.let(AppSettings::sanitizePreloadCount)
                 ?: AppSettings.DEFAULT_PRELOAD_COUNT,
-            keepTarget = prefs[Keys.KEEP_TARGET].toEnumOrNull<KeepTarget>()
-                ?: KeepTarget.ORIGINAL_ALBUM,
+            moveTarget = prefs.readMoveTarget(),
             defaultSortField = prefs[Keys.SORT_FIELD].toEnumOrNull<SortField>()
                 ?: SortField.DATE_TAKEN,
             defaultSortDirection = prefs[Keys.SORT_DIRECTION].toEnumOrNull<SortDirection>()
                 ?: SortDirection.DESC,
+        )
+    }
+
+    /**
+     * 三个键缺一不可。
+     *
+     * 只写成功一半（比如 id 与名字写进去了、路径没写）时返回 null，
+     * 让下滑退回「保留在原相册」，而不是拿着空路径去移动文件。
+     */
+    private fun Preferences.readMoveTarget(): MoveTarget? {
+        val id = this[Keys.MOVE_TARGET_ID] ?: return null
+        val path = this[Keys.MOVE_TARGET_PATH].orEmpty()
+        if (path.isBlank()) return null
+        return MoveTarget(
+            albumId = id,
+            albumName = this[Keys.MOVE_TARGET_NAME].orEmpty().ifBlank { "目标相册" },
+            relativePath = path,
         )
     }
 
@@ -60,8 +77,18 @@ class DataStoreSettingsRepository @Inject constructor(
         context.settingsDataStore.edit { it[Keys.PRELOAD_COUNT] = safe }
     }
 
-    override suspend fun setKeepTarget(target: KeepTarget) {
-        context.settingsDataStore.edit { it[Keys.KEEP_TARGET] = target.name }
+    override suspend fun setMoveTarget(target: MoveTarget?) {
+        context.settingsDataStore.edit { prefs ->
+            if (target == null) {
+                prefs.remove(Keys.MOVE_TARGET_ID)
+                prefs.remove(Keys.MOVE_TARGET_NAME)
+                prefs.remove(Keys.MOVE_TARGET_PATH)
+            } else {
+                prefs[Keys.MOVE_TARGET_ID] = target.albumId
+                prefs[Keys.MOVE_TARGET_NAME] = target.albumName
+                prefs[Keys.MOVE_TARGET_PATH] = target.relativePath
+            }
+        }
     }
 
     override suspend fun setDefaultSort(field: SortField, direction: SortDirection) {
@@ -82,7 +109,9 @@ class DataStoreSettingsRepository @Inject constructor(
 
     private object Keys {
         val PRELOAD_COUNT = intPreferencesKey("preload_count")
-        val KEEP_TARGET = stringPreferencesKey("keep_target")
+        val MOVE_TARGET_ID = longPreferencesKey("move_target_id")
+        val MOVE_TARGET_NAME = stringPreferencesKey("move_target_name")
+        val MOVE_TARGET_PATH = stringPreferencesKey("move_target_path")
         val SORT_FIELD = stringPreferencesKey("sort_field")
         val SORT_DIRECTION = stringPreferencesKey("sort_direction")
     }

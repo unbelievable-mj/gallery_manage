@@ -59,6 +59,13 @@ data class MediaAlbum(
     val kind: MediaKind,
     /** 该相册内所有媒体的字节数之和，统计页用它排序。 */
     val totalBytes: Long = 0L,
+    /**
+     * 相册对应的目录相对路径，形如 `DCIM/Camera/`。
+     *
+     * 「移动到指定相册」需要它 —— 移动本质上是把文件的 RELATIVE_PATH
+     * 改成目标相册的这个值。
+     */
+    val relativePath: String = "",
 )
 
 /** 单个相册的占用条目，统计页展示用。 */

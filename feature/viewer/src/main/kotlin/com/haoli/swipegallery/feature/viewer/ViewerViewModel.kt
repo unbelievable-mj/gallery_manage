@@ -1,11 +1,14 @@
 package com.haoli.swipegallery.feature.viewer
 
+import android.content.IntentSender
 import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.haoli.swipegallery.core.data.MediaRepository
 import com.haoli.swipegallery.core.data.settings.SettingsRepository
 import com.haoli.swipegallery.core.model.AppSettings
+import com.haoli.swipegallery.core.model.KeepTarget
+import com.haoli.swipegallery.core.model.MoveTarget
 import com.haoli.swipegallery.core.model.MediaItem
 import com.haoli.swipegallery.core.model.TriageAction
 import com.haoli.swipegallery.core.model.TriageProgress
@@ -38,6 +41,14 @@ data class ViewerUiState(
     val canUndo: Boolean = false,
     /** 最近一次操作提示，用于顶部文案。 */
     val lastActionLabel: String? = null,
+    /** 已标记「移动到目标相册」的项数。 */
+    val movedCount: Int = 0,
+    /**
+     * 下滑落点的相册名。null 表示「保留在原相册」。
+     * 界面用它把提示文案改成「下滑移到「X」」—— 否则用户看到的
+     * 提示与实际行为对不上。
+     */
+    val moveTargetName: String? = null,
 ) {
     val current: MediaItem? get() = items.getOrNull(currentIndex)
     val isFinished: Boolean get() = started && items.isEmpty()
@@ -55,14 +66,17 @@ data class ViewerUiState(
 @HiltViewModel
 class ViewerViewModel @Inject constructor(
     private val repository: MediaRepository,
-    settingsRepository: SettingsRepository,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ViewerUiState())
     val state: StateFlow<ViewerUiState> = _state.asStateFlow()
 
-    /** 阶段一产物：已决策删除、但尚未提交给系统的文件。 */
+    /** 阶段一产物之一：已决策删除、但尚未提交的文件。 */
     private val pendingTrash = mutableListOf<MediaItem>()
+
+    /** 阶段一产物之二：已决策移动到目标相册、但尚未提交的文件。 */
+    private val pendingMoves = mutableListOf<MediaItem>()
 
     private val undoStack = ArrayDeque<TriageAction>()
 
@@ -74,25 +88,38 @@ class ViewerViewModel @Inject constructor(
      */
     private var preloadCount: Int = AppSettings.DEFAULT_PRELOAD_COUNT
 
+    /** 下滑的落点。null 表示「保留在原相册」，此时下滑不改动文件。 */
+    private var moveTarget: MoveTarget? = null
+
     private var queueTotal = 0
     private var deletedCount = 0
     private var keptCount = 0
+    private var movedCount = 0
 
-    // 必须放在 preloadCount 声明之后：Kotlin 的初始化器按书写顺序执行，
+    // 必须放在被赋值的属性声明之后：Kotlin 的初始化器按书写顺序执行，
     // 写在前面的话，属性初始化会把这里读到的值覆盖回默认值。
+    //
+    // 用持续订阅而不是读一次：用户可能在设置页改了预加载张数或目标相册，
+    // 读一次的话 ViewModel 存活期间会一直用旧值。
     init {
         viewModelScope.launch {
-            preloadCount = settingsRepository.settings.first().preloadCount
+            settingsRepository.settings.collect { loaded ->
+                preloadCount = loaded.preloadCount
+                moveTarget = loaded.moveTarget
+                _state.update { it.copy(moveTargetName = loaded.moveTarget?.albumName) }
+            }
         }
     }
 
     /** 打开查看器时注入队列与起始位置。 */
     fun start(items: List<MediaItem>, startIndex: Int) {
         pendingTrash.clear()
+        pendingMoves.clear()
         undoStack.clear()
         queueTotal = items.size
         deletedCount = 0
         keptCount = 0
+        movedCount = 0
 
         val start = startIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0))
         _state.value = ViewerUiState(
@@ -130,6 +157,7 @@ class ViewerViewModel @Inject constructor(
             index = index,
             deleted = deletedCount,
             kept = keptCount,
+            moved = movedCount,
             label = "已删除「${item.displayName}」",
         )
         // 当前项变了，重新铺预加载
@@ -141,14 +169,39 @@ class ViewerViewModel @Inject constructor(
         val item = snapshot.current ?: return
         val index = snapshot.currentIndex
 
-        undoStack.addLast(TriageAction.Kept(item, index, System.currentTimeMillis()))
+        val target = moveTarget
+
+        undoStack.addLast(
+            TriageAction.Kept(
+                item = item,
+                originalIndex = index,
+                timestampMillis = System.currentTimeMillis(),
+                // 记下真实的落点，撤销逻辑与后续统计都要靠它区分「原地保留」与「归档」
+                target = if (target != null) {
+                    KeepTarget.SPECIFIC_ALBUM
+                } else {
+                    KeepTarget.ORIGINAL_ALBUM
+                },
+            )
+        )
         keptCount++
+        val label = if (target != null) {
+            // 只记进待移动队列，退出查看器时统一申请写权限并执行 ——
+            // 每滑一次弹一次系统授权框会彻底打断节奏
+            pendingMoves += item
+            movedCount++
+            "已标记移到「${target.albumName}」"
+        } else {
+            // 没有目标相册时下滑仍是「保留」：文件零改动
+            "已保留「${item.displayName}」"
+        }
 
         _state.value = snapshot.afterRemoval(
             index = index,
             deleted = deletedCount,
             kept = keptCount,
-            label = "已保留「${item.displayName}」",
+            moved = movedCount,
+            label = label,
         )
         preloadAround(_state.value.currentIndex)
     }
@@ -170,6 +223,11 @@ class ViewerViewModel @Inject constructor(
 
             is TriageAction.Kept -> {
                 keptCount = (keptCount - 1).coerceAtLeast(0)
+                // 若这项已被标记移动，一并从待移动队列摘掉 ——
+                // 否则撤销之后它仍会在退出时被移走
+                if (pendingMoves.removeAll { it.id == action.item.id }) {
+                    movedCount = (movedCount - 1).coerceAtLeast(0)
+                }
             }
         }
 
@@ -184,6 +242,7 @@ class ViewerViewModel @Inject constructor(
                 progress = TriageProgress.of(queueTotal, deletedCount, keptCount),
                 canUndo = undoStack.isNotEmpty(),
                 lastActionLabel = "已撤销「${action.item.displayName}」",
+                movedCount = movedCount,
             )
         }
         preloadAround(_state.value.currentIndex)
@@ -211,10 +270,38 @@ class ViewerViewModel @Inject constructor(
         repository.addToTrash(targets)
     }
 
+    /**
+     * 构造「移动到目标相册」的写入授权请求。
+     *
+     * 返回 null 表示没有待移动项（或未配置目标相册），调用方应跳过授权直接结束。
+     * 移动需要改写文件的 RELATIVE_PATH，必须先拿到系统授予的写权限。
+     */
+    fun moveRequest(): IntentSender? {
+        val target = moveTarget ?: return null
+        if (pendingMoves.isEmpty() || target.relativePath.isBlank()) return null
+        return repository.moveRequest(pendingMoves.map { it.uri })
+    }
+
+    /**
+     * 执行移动。**必须在 [moveRequest] 拿到用户同意后调用。**
+     *
+     * 返回成功条数。单条失败不影响其余项 —— 移动本质是改目录归属，
+     * 失败的文件原封不动留在原地，不会丢。
+     */
+    suspend fun performMoves(): Int {
+        val target = moveTarget ?: return 0
+        if (pendingMoves.isEmpty()) return 0
+
+        val targets = pendingMoves.toList()
+        pendingMoves.clear()
+        return repository.moveToAlbum(targets.map { it.uri }, target.relativePath)
+    }
+
     private fun ViewerUiState.afterRemoval(
         index: Int,
         deleted: Int,
         kept: Int,
+        moved: Int,
         label: String,
     ): ViewerUiState {
         val remaining = items.toMutableList().apply { removeAt(index) }
@@ -224,6 +311,7 @@ class ViewerViewModel @Inject constructor(
             progress = TriageProgress.of(queueTotal, deleted, kept),
             canUndo = true,
             lastActionLabel = label,
+            movedCount = moved,
         )
     }
 

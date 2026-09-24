@@ -2,6 +2,9 @@ package com.haoli.swipegallery.feature.viewer
 
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -71,13 +74,35 @@ fun ViewerRoute(
     val scope = rememberCoroutineScope()
     var closing by remember { mutableStateOf(false) }
 
+    // 移动要改写文件的 RELATIVE_PATH，必须先拿到系统授予的写权限。
+    // 一次会话只弹一次框，用户同意后整批执行。
+    val moveLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult(),
+    ) {
+        // 无论用户是否同意都要收尾：同意则文件已移动，
+        // 拒绝则它们留在原处 —— 两种情况列表都需要重新查询
+        scope.launch {
+            viewModel.performMoves()
+            onFlushed()
+            onClose()
+        }
+    }
+
     val requestClose: () -> Unit = {
         if (!closing) {
             closing = true
             scope.launch {
+                // 删除只写本地记录，瞬时完成、无对话框
                 viewModel.commitToTrash()
-                onFlushed()
-                onClose()
+
+                // 移动需要系统授权；没有待移动项时直接结束
+                val sender = viewModel.moveRequest()
+                if (sender != null) {
+                    moveLauncher.launch(IntentSenderRequest.Builder(sender).build())
+                } else {
+                    onFlushed()
+                    onClose()
+                }
             }
         }
     }
@@ -143,7 +168,7 @@ fun ViewerScreen(
             }
 
             state.current?.let { current ->
-                InfoBar(item = current)
+                InfoBar(item = current, moveTargetName = state.moveTargetName)
             }
         }
     }
@@ -334,7 +359,7 @@ private fun ProgressTrack(fraction: Float) {
  * 底部概览信息栏 —— 用户明确要求的「拍摄/创建时间 + 文件占用空间」。
  */
 @Composable
-private fun InfoBar(item: MediaItem) {
+private fun InfoBar(item: MediaItem, moveTargetName: String?) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -369,7 +394,9 @@ private fun InfoBar(item: MediaItem) {
 
         Spacer(Modifier.height(10.dp))
         Text(
-            text = "上滑删除  ·  下滑保留  ·  左右翻页",
+            text = "上滑删除  ·  " +
+                (moveTargetName?.let { "下滑移到「$it」" } ?: "下滑保留") +
+                "  ·  左右翻页",
             style = MaterialTheme.typography.labelSmall,
             color = Color.White.copy(alpha = 0.45f),
         )

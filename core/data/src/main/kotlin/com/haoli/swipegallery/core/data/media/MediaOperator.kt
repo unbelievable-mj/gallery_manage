@@ -1,6 +1,7 @@
 package com.haoli.swipegallery.core.data.media
 
 import android.content.ContentResolver
+import android.content.ContentValues
 import android.content.Context
 import android.content.IntentSender
 import android.net.Uri
@@ -66,5 +67,47 @@ class MediaOperator @Inject constructor(
         }.onFailure {
             Timber.w(it, "构造还原请求失败，目标数量=%d", uris.size)
         }.getOrNull()
+    }
+
+    /**
+     * 构造「写入授权」请求。
+     *
+     * 移动文件需要先拿到系统授予的写权限。用 `createWriteRequest` 一次为整批文件申请，
+     * 用户点一次即可 —— 逐个申请会弹到人烦。
+     */
+    fun writeRequest(uris: List<String>): IntentSender? {
+        if (uris.isEmpty()) return null
+
+        return runCatching {
+            MediaStore.createWriteRequest(resolver, uris.map(Uri::parse)).intentSender
+        }.onFailure {
+            Timber.w(it, "构造写入授权请求失败，目标数量=%d", uris.size)
+        }.getOrNull()
+    }
+
+    /**
+     * 把文件移动到目标目录。
+     *
+     * 移动的本质是改写文件的 `RELATIVE_PATH` —— 文件内容不动，
+     * 只是归属的目录变了，因此不产生额外的磁盘占用，也不会有复制中断丢数据的风险。
+     *
+     * **必须在 [writeRequest] 拿到用户同意之后调用**，否则 `update` 会因缺少写权限失败。
+     * 返回成功移动的条数，失败的单条不影响其余项。
+     */
+    fun moveToAlbum(uris: List<String>, targetRelativePath: String): Int {
+        if (uris.isEmpty() || targetRelativePath.isBlank()) return 0
+
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.RELATIVE_PATH, targetRelativePath)
+        }
+
+        return uris.count { raw ->
+            runCatching {
+                resolver.update(Uri.parse(raw), values, null, null) > 0
+            }.getOrElse {
+                Timber.w(it, "移动失败: %s", raw)
+                false
+            }
+        }
     }
 }

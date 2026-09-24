@@ -116,11 +116,17 @@ class MediaStoreDataSource @Inject constructor(
     fun albums(kind: MediaKind): List<MediaAlbum> {
         val idColumn = bucketIdColumn(kind)
         val nameColumn = bucketNameColumn(kind)
-        val acc = LinkedHashMap<Long, Triple<String, Int, Long>>()
+        val acc = LinkedHashMap<Long, AlbumAccumulator>()
 
         resolver.query(
             collectionFor(kind),
-            arrayOf(idColumn, nameColumn, MediaStore.MediaColumns.SIZE),
+            arrayOf(
+                idColumn,
+                nameColumn,
+                MediaStore.MediaColumns.SIZE,
+                // RELATIVE_PATH 是文件的目录，同一个 bucket 里都一样，取第一条即可
+                MediaStore.MediaColumns.RELATIVE_PATH,
+            ),
             ACTIVE_SELECTION,
             null,
             null,
@@ -128,17 +134,21 @@ class MediaStoreDataSource @Inject constructor(
             val idIdx = cursor.getColumnIndex(idColumn)
             val nameIdx = cursor.getColumnIndex(nameColumn)
             val sizeIdx = cursor.getColumnIndex(MediaStore.MediaColumns.SIZE)
+            val pathIdx = cursor.getColumnIndex(MediaStore.MediaColumns.RELATIVE_PATH)
 
             while (cursor.moveToNext()) {
                 val id = if (idIdx >= 0) cursor.getLong(idIdx) else 0L
                 val name = if (nameIdx >= 0) cursor.getString(nameIdx).orEmpty() else ""
                 val size = if (sizeIdx >= 0) cursor.getLong(sizeIdx).coerceAtLeast(0L) else 0L
+                val path = if (pathIdx >= 0) cursor.getString(pathIdx).orEmpty() else ""
 
                 val previous = acc[id]
-                acc[id] = Triple(
-                    previous?.first ?: name,
-                    (previous?.second ?: 0) + 1,
-                    (previous?.third ?: 0L) + size,
+                acc[id] = AlbumAccumulator(
+                    name = previous?.name ?: name,
+                    itemCount = (previous?.itemCount ?: 0) + 1,
+                    bytes = (previous?.bytes ?: 0L) + size,
+                    // 优先保留已经拿到的非空路径，避免个别行路径为空时把它覆盖掉
+                    relativePath = previous?.relativePath?.takeIf { it.isNotEmpty() } ?: path,
                 )
             }
         }
@@ -148,14 +158,23 @@ class MediaStoreDataSource @Inject constructor(
                 MediaAlbum(
                     id = id,
                     // 部分来源的 bucket 名为空，给个兜底文案，否则列表里会出现空白项
-                    name = value.first.ifBlank { "未命名相册" },
-                    itemCount = value.second,
+                    name = value.name.ifBlank { "未命名相册" },
+                    itemCount = value.itemCount,
                     kind = kind,
-                    totalBytes = value.third,
+                    totalBytes = value.bytes,
+                    relativePath = value.relativePath,
                 )
             }
             .sortedWith(compareByDescending<MediaAlbum> { it.itemCount }.thenBy { it.name })
     }
+
+    /** 相册聚合过程中的中间结构，避免用四元组把代码读糊。 */
+    private data class AlbumAccumulator(
+        val name: String,
+        val itemCount: Int,
+        val bytes: Long,
+        val relativePath: String,
+    )
 
     private fun countAndSize(kind: MediaKind): Pair<Int, Long> {
         var count = 0

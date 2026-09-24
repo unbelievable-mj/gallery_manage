@@ -121,4 +121,11 @@ class MediaStoreMediaRepository @Inject constructor(
     override fun observeSystemTrash(): Flow<List<MediaItem>> = flow {
         emit(dataSource.systemTrashedItems())
     }.flowOn(Dispatchers.IO)
+
+    override fun moveRequest(uris: List<String>): IntentSender? = mediaOperator.writeRequest(uris)
+
+    override suspend fun moveToAlbum(uris: List<String>, targetRelativePath: String): Int =
+        withContext(Dispatchers.IO) {
+            mediaOperator.moveToAlbum(uris, targetRelativePath)
+        }
 }

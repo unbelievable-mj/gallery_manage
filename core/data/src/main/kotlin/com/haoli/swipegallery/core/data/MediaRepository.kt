@@ -83,4 +83,18 @@ interface MediaRepository {
      * 说明该设备/存储卷没有实现回收站。
      */
     fun observeSystemTrash(): Flow<List<MediaItem>>
+
+    /**
+     * 构造「移动到指定相册」所需的写入授权请求。
+     *
+     * 移动要改文件的 RELATIVE_PATH，必须先拿到系统授予的写权限。
+     * 返回 null 表示没有待移动项，调用方应跳过授权直接结束。
+     */
+    fun moveRequest(uris: List<String>): IntentSender?
+
+    /**
+     * 执行移动。**必须在 [moveRequest] 得到用户同意之后调用。**
+     * 返回成功移动的条数。
+     */
+    suspend fun moveToAlbum(uris: List<String>, targetRelativePath: String): Int
 }

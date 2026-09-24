@@ -25,6 +25,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -32,6 +35,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haoli.swipegallery.core.common.formatFileSize
 import com.haoli.swipegallery.core.model.AppSettings
+import com.haoli.swipegallery.core.model.MediaAlbum
+import com.haoli.swipegallery.core.model.MoveTarget
 import com.haoli.swipegallery.core.model.SortDirection
 import com.haoli.swipegallery.core.model.SortField
 
@@ -53,6 +58,7 @@ fun SettingsRoute(
         onPreloadCountChange = viewModel::setPreloadCount,
         onSortFieldChange = viewModel::setSortField,
         onSortDirectionChange = viewModel::setSortDirection,
+        onMoveTargetChange = viewModel::setMoveTarget,
         modifier = modifier,
     )
 }
@@ -65,6 +71,7 @@ fun SettingsScreen(
     onPreloadCountChange: (Int) -> Unit,
     onSortFieldChange: (SortField) -> Unit,
     onSortDirectionChange: (SortDirection) -> Unit,
+    onMoveTargetChange: (MediaAlbum?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -111,11 +118,10 @@ fun SettingsScreen(
                 )
             }
 
-            InfoBlock(
-                title = "下滑保留",
-                value = "保留在原相册",
-                description = "文件零改动，只是从本次队列里移出。" +
-                    "移动到指定相册、复制到自选目录、标记为收藏尚未实现。",
+            MoveTargetBlock(
+                target = state.settings.moveTarget,
+                albums = state.albums,
+                onSelect = onMoveTargetChange,
             )
 
             SectionTitle("浏览")
@@ -214,31 +220,118 @@ private fun SettingBlock(
     }
 }
 
+/**
+ * 下滑落点选择。
+ *
+ * 这一项存在的理由：下滑与左滑在「保留在原相册」时对文件的效果完全一样，
+ * 手势重合等于浪费。选了目标相册之后，下滑才成为真正有效的归档动作。
+ */
 @Composable
-private fun InfoBlock(title: String, value: String, description: String) {
+private fun MoveTargetBlock(
+    target: MoveTarget?,
+    albums: List<MediaAlbum>,
+    onSelect: (MediaAlbum?) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 6.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
-                text = title,
+                text = "下滑保留",
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.weight(1f),
             )
             Text(
-                text = value,
+                text = target?.albumName ?: "保留在原相册",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = if (expanded) "收起" else "更改",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
             )
         }
+
         Spacer(Modifier.height(2.dp))
         Text(
-            text = description,
+            text = if (target == null) {
+                "下滑不改动文件。选一个目标相册后，下滑会把照片移过去 —— " +
+                    "这样「下滑归档」与「左滑跳过」才是两件不同的事。"
+            } else {
+                "下滑会把照片移动到「${target.albumName}」，退出查看器时统一申请授权并执行。"
+            },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+
+        if (expanded) {
+            Spacer(Modifier.height(10.dp))
+            TargetOption(
+                label = "保留在原相册（不移动）",
+                selected = target == null,
+                onClick = { onSelect(null); expanded = false },
+            )
+            albums.forEach { album ->
+                TargetOption(
+                    label = "${album.name} · ${album.itemCount}",
+                    selected = album.id == target.albumId,
+                    onClick = { onSelect(album); expanded = false },
+                )
+            }
+            if (albums.isEmpty()) {
+                Text(
+                    text = "没有可用的相册",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 6.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TargetOption(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp)
+            .clickable(onClick = onClick),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f),
+            )
+            if (selected) {
+                Text(
+                    text = "已选",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
     }
 }
 
