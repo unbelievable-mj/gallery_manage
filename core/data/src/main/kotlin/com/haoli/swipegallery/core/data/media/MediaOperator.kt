@@ -18,10 +18,8 @@ import timber.log.Timber
  * 所有删除都必须经过这里 —— 它是撤销能力能够成立的唯一前提。
  *
  * 删除分两步，这个区分很关键：
- *  - **滑卡时**：只把内容记进应用自己的回收站（`TrashDao`），**绝不碰系统**。
- *    系统接口在各类 ROM 上的表现并不一致（是否真的进回收站、回收站入口是否可见，
- *    都因厂商而异），而滑卡没有二次确认，一旦行为不符预期就是静默的数据丢失，
- *    用户没有任何补救手段。
+ *  - **滑卡时**：只在内存里记账，**绝不碰系统** —— 每滑一次弹一次授权框会打断节奏。
+ *  - **会话结束时**：整批调用一次 [trashRequest]，把待删内容移入系统回收站。
  *  - **用户在回收站里点「删除」时**：才调用 [purgeRequest]。
  *    此时已有明确确认，即便退化也是用户想要的结果。
  */
@@ -31,6 +29,23 @@ class MediaOperator @Inject constructor(
 ) {
 
     private val resolver: ContentResolver get() = context.contentResolver
+
+    /**
+     * 构造「移入系统回收站」请求。
+     *
+     * 用系统回收站而不是永久删除，是为了让内容在手机相册的回收站里也能看到、
+     * 也能取回 —— 应用的回收站就是系统回收站的一个视图，两边天然一致。
+     * 空间不会因此释放，要释放得在回收站里点「永久删除」。
+     */
+    fun trashRequest(uris: List<String>): IntentSender? {
+        if (uris.isEmpty()) return null
+
+        return runCatching {
+            MediaStore.createTrashRequest(resolver, uris.map(Uri::parse), true).intentSender
+        }.onFailure {
+            Timber.w(it, "构造回收站请求失败，目标数量=%d", uris.size)
+        }.getOrNull()
+    }
 
     /**
      * 构造「永久删除」请求。**这是全应用唯一会真正销毁文件的地方。**

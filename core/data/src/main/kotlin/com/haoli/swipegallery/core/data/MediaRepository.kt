@@ -46,19 +46,6 @@ interface MediaRepository {
      */
     fun observeStats(): Flow<StorageStats>
 
-    /**
-     * 回收站内容。
-     *
-     * 这是**应用自己的**回收站，不是系统回收站。原因见 `TrashEntity` 的注释：
-     * 系统回收站在部分 ROM 上不可靠，把删除绑上去等于把用户数据交给运气。
-     */
-    fun observeTrash(): Flow<List<MediaItem>>
-
-    /** 把内容记入回收站。文件本身不动，因此瞬时完成、绝对可逆。 */
-    suspend fun addToTrash(items: List<MediaItem>)
-
-    /** 从回收站取回：只删掉记录，文件从未被动过。 */
-    suspend fun restoreFromTrash(mediaIds: List<Long>)
 
     /** 网格用缩略图。图片与视频都走同一条路径。 */
     suspend fun thumbnail(uri: String, sizePx: Int): Bitmap?
@@ -78,13 +65,22 @@ interface MediaRepository {
     fun untrashRequest(uris: List<String>): IntentSender?
 
     /**
-     * 系统回收站中的内容。
+     * 回收站内容 —— **就是系统回收站**（`IS_TRASHED = 1`）。
      *
-     * 设备不支持系统回收站时返回空列表，界面据此隐藏对应区块。
-     * 这也顺便成了一个诊断信号：如果这里始终为空，
-     * 说明该设备/存储卷没有实现回收站。
+     * 刻意不做「应用自己的回收站」：那样会出现两套互不相干的回收站，
+     * 在应用里删掉的东西在手机相册的回收站里看不到，反之亦然。
+     * 这里直接读系统回收站，两边天然一致。
+     *
+     * 设备不支持回收站时返回空列表，界面据此提示。
      */
-    fun observeSystemTrash(): Flow<List<MediaItem>>
+    fun observeTrash(): Flow<List<MediaItem>>
+
+    /**
+     * 构造「移入回收站」请求。滑卡会话结束时整批调用一次。
+     *
+     * 用系统回收站而不是永久删除，是为了让内容在手机相册里也能找到并取回。
+     */
+    fun trashRequest(uris: List<String>): IntentSender?
 
     /**
      * 构造「移动到指定相册」所需的写入授权请求。

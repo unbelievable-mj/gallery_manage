@@ -80,8 +80,14 @@ fun ViewerRoute(
 
     val context = LocalContext.current
 
-    // 移动要改写文件的 RELATIVE_PATH，必须先拿到系统授予的写权限。
-    // 一次会话只弹一次框，用户同意后整批执行。
+    /** 收尾：提示本次结果、刷新列表、关闭查看器。 */
+    suspend fun finish(moved: Int, denied: Boolean) {
+        notifySummary(context, viewModel.summary(), moved = moved, denied = denied)
+        onFlushed()
+        onClose()
+    }
+
+    // 移动要改写文件的 RELATIVE_PATH，必须先拿到系统授予的写权限
     val moveLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult(),
     ) { result ->
@@ -94,27 +100,37 @@ fun ViewerRoute(
                 viewModel.discardMoves()
                 0
             }
-            notifySummary(context, viewModel.summary(), moved = moved, denied = !approved)
-            onFlushed()
-            onClose()
+            finish(moved = moved, denied = !approved)
+        }
+    }
+
+    // 移入系统回收站。无论用户同意与否都继续往下走：
+    // 同意则内容已进回收站，取消则留在原处，两种情况的收尾一样。
+    val trashLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult(),
+    ) {
+        val sender = viewModel.moveRequest()
+        if (sender != null) {
+            moveLauncher.launch(IntentSenderRequest.Builder(sender).build())
+        } else {
+            scope.launch { finish(moved = 0, denied = false) }
         }
     }
 
     val requestClose: () -> Unit = {
         if (!closing) {
             closing = true
-            scope.launch {
-                // 删除只写本地记录，瞬时完成、无对话框
-                viewModel.commitToTrash()
-
-                // 移动需要系统授权；没有待移动项时直接结束
-                val sender = viewModel.moveRequest()
-                if (sender != null) {
-                    moveLauncher.launch(IntentSenderRequest.Builder(sender).build())
+            // 先把待删队列整批提交给系统回收站。
+            // 滑卡时只记账不碰系统，就是为了在这里只弹一次授权框。
+            val trashSender = viewModel.trashRequest()
+            if (trashSender != null) {
+                trashLauncher.launch(IntentSenderRequest.Builder(trashSender).build())
+            } else {
+                val moveSender = viewModel.moveRequest()
+                if (moveSender != null) {
+                    moveLauncher.launch(IntentSenderRequest.Builder(moveSender).build())
                 } else {
-                    notifySummary(context, viewModel.summary(), moved = 0, denied = false)
-                    onFlushed()
-                    onClose()
+                    scope.launch { finish(moved = 0, denied = false) }
                 }
             }
         }

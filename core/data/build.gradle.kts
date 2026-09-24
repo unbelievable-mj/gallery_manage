@@ -30,9 +30,6 @@ dependencies {
     ksp(libs.hilt.compiler)
 
     // 以下依赖在 M0 阶段仅用于验证版本解析，M1/M5 起开始真正使用
-    implementation(libs.androidx.room.runtime)
-    implementation(libs.androidx.room.ktx)
-    ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.paging.runtime)
     implementation(libs.androidx.media3.exoplayer)

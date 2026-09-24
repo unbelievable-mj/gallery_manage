@@ -16,44 +16,33 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class TrashUiState(
-    /** 应用自己的回收站：滑卡删除的内容先到这里，文件未被动过。 */
-    val appItems: List<MediaItem> = emptyList(),
-    /**
-     * 系统回收站中的内容。
-     *
-     * 设备/存储卷不支持回收站时恒为空 —— 界面据此隐藏这一区块。
-     */
-    val systemItems: List<MediaItem> = emptyList(),
+    val items: List<MediaItem> = emptyList(),
     val selectedIds: Set<Long> = emptySet(),
     val loading: Boolean = true,
 ) {
     val hasSelection: Boolean get() = selectedIds.isNotEmpty()
-    val allSelected: Boolean get() = appItems.isNotEmpty() && selectedIds.size == appItems.size
-    val isEmpty: Boolean get() = appItems.isEmpty() && systemItems.isEmpty()
+    val allSelected: Boolean get() = items.isNotEmpty() && selectedIds.size == items.size
+    val isEmpty: Boolean get() = items.isEmpty()
 
     /**
-     * 待清理内容占用的空间。
+     * 回收站内容占用的空间。
      *
-     * 这是这一页最该显眼的数字：回收站里的内容**仍在磁盘上**，
-     * 用户清空后如果看不到占用下降，就会怀疑删除根本没生效。
+     * 这个数字必须显眼：回收站里的内容**仍占着磁盘**，
+     * 用户看不到它就会以为「删了但空间没变 = 删除没生效」。
      */
-    val totalBytes: Long get() = appItems.sumOf { it.sizeBytes }
+    val totalBytes: Long get() = items.sumOf { it.sizeBytes }
 
-    /** 当前选中项占用的空间，让用户在按下「删除」之前知道能腾出多少。 */
-    val selectedBytes: Long
-        get() = appItems.filter { it.id in selectedIds }.sumOf { it.sizeBytes }
-
-    val systemBytes: Long get() = systemItems.sumOf { it.sizeBytes }
+    /** 当前选中项占用的空间，让用户按下「永久删除」之前知道能腾出多少。 */
+    val selectedBytes: Long get() = items.filter { it.id in selectedIds }.sumOf { it.sizeBytes }
 }
 
 /**
  * 回收站页面的状态持有者。
  *
- * 两个来源，语义不同：
- *  - **应用回收站**：滑卡删除只写一条记录，文件原封不动，所以「恢复」是瞬时的
- *  - **系统回收站**：用户在应用里点「删除」后，内容会尽量交给系统回收站
- *    （设备支持时）。这里把系统回收站里的内容也列出来并提供取回，
- *    避免出现「删了之后在手机图库里找不到」的困惑。
+ * **这里展示的就是系统回收站**（`IS_TRASHED = 1`），不是应用另存的一份记录。
+ * 早先的版本在应用里维护了一套独立记录，结果是两套互不相干的回收站：
+ * 在应用里删掉的东西在手机相册的回收站里看不到，反之亦然。
+ * 现在两边读的是同一份数据，天然一致。
  */
 @HiltViewModel
 class TrashViewModel @Inject constructor(
@@ -63,44 +52,32 @@ class TrashViewModel @Inject constructor(
     private val _state = MutableStateFlow(TrashUiState())
     val state: StateFlow<TrashUiState> = _state.asStateFlow()
 
-    /** 已发起删除的记录，等系统对话框返回后决定去留。 */
-    private var pendingPurgeIds: List<Long> = emptyList()
-
-    /** 本次删除的目标是系统回收站里的内容，而非应用回收站。 */
-    private var purgingSystem = false
-
     init {
-        viewModelScope.launch {
-            repository.observeTrash().collect { items ->
-                val alive = items.mapTo(HashSet()) { it.id }
-                _state.update { previous ->
-                    previous.copy(
-                        appItems = items,
-                        loading = false,
-                        // 记录可能已被别处恢复或清理，剔除失效的选中项
-                        selectedIds = previous.selectedIds intersect alive,
-                    )
-                }
-            }
-        }
-        reloadSystemTrash()
+        reload()
     }
 
     /**
      * 重新读取系统回收站。
      *
-     * 不用持续订阅：系统回收站的变化不由我们驱动，只在页面进入与操作后各读一次。
-     * 查询本身在部分 ROM 上可能抛异常（未实现 IS_TRASHED），这里兜住，
-     * 让页面退化成「没有系统回收站」而不是崩掉。
+     * 不做持续订阅：回收站的变化由系统与我们自己的操作驱动，每次操作后主动读一次即可。
+     * 查询在未实现回收站的设备上可能抛异常，这里兜住，让页面退化成空列表而不是崩掉。
      */
-    fun reloadSystemTrash() {
+    fun reload() {
         viewModelScope.launch {
             val items = try {
-                repository.observeSystemTrash().first()
+                repository.observeTrash().first()
             } catch (_: Exception) {
                 emptyList()
             }
-            _state.update { it.copy(systemItems = items, loading = false) }
+            val alive = items.mapTo(HashSet()) { it.id }
+            _state.update { previous ->
+                previous.copy(
+                    items = items,
+                    loading = false,
+                    // 选中项可能已被别处取回或清理，剔除失效的
+                    selectedIds = previous.selectedIds intersect alive,
+                )
+            }
         }
     }
 
@@ -116,89 +93,35 @@ class TrashViewModel @Inject constructor(
     }
 
     fun selectAll() {
-        _state.update { it.copy(selectedIds = it.appItems.mapTo(HashSet()) { item -> item.id }) }
+        _state.update { it.copy(selectedIds = it.items.mapTo(HashSet()) { item -> item.id }) }
     }
 
     fun clearSelection() {
         _state.update { it.copy(selectedIds = emptySet()) }
     }
 
-    /** 从应用回收站取回。只删掉记录，文件从未被动过，因此瞬时完成。 */
-    fun restoreSelected() {
-        val ids = _state.value.selectedIds.toList()
-        if (ids.isEmpty()) return
-        viewModelScope.launch {
-            repository.restoreFromTrash(ids)
-            _state.update { it.copy(selectedIds = emptySet()) }
-        }
-    }
+    /** 从系统回收站取回。文件回到原相册。 */
+    fun restoreSelected(): IntentSender? =
+        repository.untrashRequest(selectedUris() ?: return null)
+
+    /** 永久删除。**这是全应用唯一会真正释放空间的操作。** */
+    fun purgeSelected(): IntentSender? =
+        repository.purgeRequest(selectedUris() ?: return null)
 
     /**
-     * 删除选中项。
+     * 系统对话框返回后调用。
      *
-     * 返回的 IntentSender 交给 `StartIntentSenderForResult` 启动。
-     * 优先移入系统回收站，设备不支持时退回永久删除 —— 无论哪种都符合用户意图。
+     * 无论用户同意还是取消都重读一次：同意则列表已变，取消则内容原样保留。
      */
-    fun purgeSelected(): IntentSender? {
+    fun onActionFinished() {
+        _state.update { it.copy(selectedIds = emptySet()) }
+        reload()
+    }
+
+    private fun selectedUris(): List<String>? {
         val snapshot = _state.value
         if (snapshot.selectedIds.isEmpty()) return null
-
-        val uris = snapshot.appItems
-            .filter { it.id in snapshot.selectedIds }
-            .map { it.uri }
-
-        pendingPurgeIds = snapshot.selectedIds.toList()
-        return repository.purgeRequest(uris)
-    }
-
-    /** 用户在系统对话框里确认了删除。 */
-    fun onPurgeConfirmed() {
-        if (purgingSystem) {
-            purgingSystem = false
-            reloadSystemTrash()
-            return
-        }
-
-        val ids = pendingPurgeIds
-        pendingPurgeIds = emptyList()
-        if (ids.isEmpty()) return
-        viewModelScope.launch {
-            repository.restoreFromTrash(ids)
-            _state.update { it.copy(selectedIds = emptySet()) }
-            reloadSystemTrash()
-        }
-    }
-
-    /**
-     * 用户在系统对话框里取消了。
-     *
-     * 记录保持不动：内容继续留在回收站里，不能出现「点了取消东西却没了」。
-     */
-    fun onPurgeDismissed() {
-        purgingSystem = false
-        pendingPurgeIds = emptyList()
-    }
-
-    /**
-     * 永久删除系统回收站里的全部内容。
-     *
-     * 需要这个入口的原因：应用回收站里的内容被删除后，如果走的是「移入系统回收站」，
-     * 空间不会释放；而用户往往找不到手机自带的回收站入口，那部分空间就卡住了。
-     */
-    fun purgeSystemTrash(): IntentSender? {
-        val targets = _state.value.systemItems
-        if (targets.isEmpty()) return null
-
-        pendingPurgeIds = emptyList()
-        purgingSystem = true
-        return repository.purgeRequest(targets.map { it.uri })
-    }
-
-    /** 从系统回收站取回单项。 */
-    fun restoreSystemItem(item: MediaItem): IntentSender? = repository.untrashRequest(listOf(item.uri))
-
-    fun onSystemRestoreFinished() {
-        reloadSystemTrash()
+        return snapshot.items.filter { it.id in snapshot.selectedIds }.map { it.uri }
     }
 
     suspend fun loadThumbnail(uri: String): Bitmap? = repository.thumbnail(uri, THUMBNAIL_PX)

@@ -271,18 +271,19 @@ class ViewerViewModel @Inject constructor(
     suspend fun loadFullImage(uri: String): Bitmap? = repository.fullImage(uri, FULL_IMAGE_PX)
 
     /**
-     * 阶段二：把待删队列提交到**应用自己的回收站**。
+     * 阶段二：构造「移入系统回收站」请求。
      *
-     * 只写一条记录，文件原封不动。因此这里没有系统对话框、不会被打断，
-     * 更重要的是不会因为 ROM 对系统回收站的实现差异而丢数据。
+     * 滑卡时只记账、不碰系统 —— 每滑一次弹一次授权框会彻底打断节奏；
+     * 会话结束时整批提交一次。
      *
-     * 真正的销毁由用户在回收站页面明确点「彻底删除」时才发生。
+     * 之所以进系统回收站而不是永久删除：这样内容在手机相册的回收站里也能看到、
+     * 也能取回。应用的回收站就是系统回收站的一个视图，两边天然一致。
      */
-    suspend fun commitToTrash() {
-        if (pendingTrash.isEmpty()) return
-        val targets = pendingTrash.toList()
+    fun trashRequest(): IntentSender? {
+        if (pendingTrash.isEmpty()) return null
+        val targets = pendingTrash.map { it.uri }
         pendingTrash.clear()
-        repository.addToTrash(targets)
+        return repository.trashRequest(targets)
     }
 
     /** 当前会话的结果摘要。 */

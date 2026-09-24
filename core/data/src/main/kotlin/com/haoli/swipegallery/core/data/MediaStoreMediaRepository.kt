@@ -6,9 +6,6 @@ import com.haoli.swipegallery.core.data.media.FullImageLoader
 import com.haoli.swipegallery.core.data.media.MediaOperator
 import com.haoli.swipegallery.core.data.media.MediaStoreDataSource
 import com.haoli.swipegallery.core.data.media.ThumbnailLoader
-import com.haoli.swipegallery.core.data.trash.TrashDao
-import com.haoli.swipegallery.core.data.trash.toMediaItem
-import com.haoli.swipegallery.core.data.trash.toTrashEntity
 import com.haoli.swipegallery.core.model.AlbumUsage
 import com.haoli.swipegallery.core.model.LibrarySnapshot
 import com.haoli.swipegallery.core.model.MediaAlbum
@@ -23,14 +20,13 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
 /**
  * 基于 MediaStore 的实现。
  *
  * 三件事：查询（[MediaStoreDataSource]）、解码（[ThumbnailLoader] / [FullImageLoader]）、
- * 写操作（[MediaOperator]），再加上应用自己的回收站（[TrashDao]）。
+ * 写操作（[MediaOperator]）。回收站直接读系统回收站，不另存一份。
  */
 @Singleton
 class MediaStoreMediaRepository @Inject constructor(
@@ -38,7 +34,6 @@ class MediaStoreMediaRepository @Inject constructor(
     private val thumbnailLoader: ThumbnailLoader,
     private val fullImageLoader: FullImageLoader,
     private val mediaOperator: MediaOperator,
-    private val trashDao: TrashDao,
 ) : MediaRepository {
 
     override fun observeSnapshot(): Flow<LibrarySnapshot> = flow {
@@ -51,13 +46,9 @@ class MediaStoreMediaRepository @Inject constructor(
         albumId: Long?,
         nameQuery: String,
     ): Flow<List<MediaItem>> = flow {
-        // 回收站里的项仍然存在于 MediaStore，必须在这里剔除，
-        // 否则用户「删掉」的内容会立刻重新出现在网格里
-        val hidden = trashDao.allMediaIds().toHashSet()
-        emit(
-            dataSource.items(kind, sort, albumId, nameQuery = nameQuery)
-                .filterNot { it.id in hidden }
-        )
+        // 不需要额外剔除已删项：查询本身就带 IS_TRASHED = 0，
+        // 系统回收站里的内容不会出现在结果中
+        emit(dataSource.items(kind, sort, albumId, nameQuery = nameQuery))
     }.flowOn(Dispatchers.IO)
 
     override fun observeAlbums(kind: MediaKind): Flow<List<MediaAlbum>> = flow {
@@ -69,7 +60,7 @@ class MediaStoreMediaRepository @Inject constructor(
         // 不必再单独扫一遍媒体表
         val imageAlbums = dataSource.albums(MediaKind.IMAGE)
         val videoAlbums = dataSource.albums(MediaKind.VIDEO)
-        val trashed = trashDao.observeAll().first()
+        val trashed = dataSource.systemTrashedItems()
 
         emit(
             StorageStats(
@@ -94,23 +85,12 @@ class MediaStoreMediaRepository @Inject constructor(
         )
     }.flowOn(Dispatchers.IO)
 
-    override fun observeTrash(): Flow<List<MediaItem>> =
-        trashDao.observeAll().map { entries -> entries.map { it.toMediaItem() } }
+    override fun observeTrash(): Flow<List<MediaItem>> = flow {
+        emit(dataSource.systemTrashedItems())
+    }.flowOn(Dispatchers.IO)
 
-    override suspend fun addToTrash(items: List<MediaItem>) {
-        if (items.isEmpty()) return
-        val now = System.currentTimeMillis()
-        withContext(Dispatchers.IO) {
-            trashDao.insertAll(items.map { it.toTrashEntity(now) })
-        }
-    }
-
-    override suspend fun restoreFromTrash(mediaIds: List<Long>) {
-        if (mediaIds.isEmpty()) return
-        withContext(Dispatchers.IO) {
-            trashDao.deleteByMediaIds(mediaIds)
-        }
-    }
+    override fun trashRequest(uris: List<String>): IntentSender? =
+        mediaOperator.trashRequest(uris)
 
     override suspend fun thumbnail(uri: String, sizePx: Int): Bitmap? =
         thumbnailLoader.load(uri, sizePx)
@@ -121,10 +101,6 @@ class MediaStoreMediaRepository @Inject constructor(
     override fun purgeRequest(uris: List<String>): IntentSender? = mediaOperator.purgeRequest(uris)
 
     override fun untrashRequest(uris: List<String>): IntentSender? = mediaOperator.untrashRequest(uris)
-
-    override fun observeSystemTrash(): Flow<List<MediaItem>> = flow {
-        emit(dataSource.systemTrashedItems())
-    }.flowOn(Dispatchers.IO)
 
     override fun moveRequest(uris: List<String>): IntentSender? = mediaOperator.writeRequest(uris)
 
