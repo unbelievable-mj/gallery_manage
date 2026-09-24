@@ -45,3 +45,16 @@ data class LibrarySnapshot(
      */
     val isStub: Boolean = false,
 )
+
+/**
+ * 一个相册（MediaStore 里叫 bucket）。
+ *
+ * 用户需求里明确提到「可以选择某个相册单独处理」，
+ * 所以相册是滑卡范围的第一等概念，而不是一个筛选附属品。
+ */
+data class MediaAlbum(
+    val id: Long,
+    val name: String,
+    val itemCount: Int,
+    val kind: MediaKind,
+)

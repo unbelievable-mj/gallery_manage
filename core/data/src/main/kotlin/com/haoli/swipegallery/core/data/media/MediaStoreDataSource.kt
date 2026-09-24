@@ -5,6 +5,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.MediaStore
 import com.haoli.swipegallery.core.model.LibrarySnapshot
+import com.haoli.swipegallery.core.model.MediaAlbum
 import com.haoli.swipegallery.core.model.MediaItem
 import com.haoli.swipegallery.core.model.MediaKind
 import com.haoli.swipegallery.core.model.SortDirection
@@ -30,14 +31,14 @@ class MediaStoreDataSource @Inject constructor(
 
     private val resolver get() = context.contentResolver
 
-    fun items(kind: MediaKind, spec: SortSpec): List<MediaItem> {
+    fun items(kind: MediaKind, spec: SortSpec, albumId: Long? = null): List<MediaItem> {
         val result = ArrayList<MediaItem>(256)
 
         resolver.query(
             collectionFor(kind),
             projectionFor(kind),
-            SELECTION,
-            null,
+            selectionFor(kind, albumId),
+            albumId?.let { arrayOf(it.toString()) },
             sortOrderFor(spec, kind),
         )?.use { cursor ->
             val idIdx = cursor.getColumnIndex(MediaStore.MediaColumns._ID)
@@ -99,6 +100,48 @@ class MediaStoreDataSource @Inject constructor(
             totalSizeBytes = imageBytes + videoBytes,
             isStub = false,
         )
+    }
+
+    /**
+     * 列出某个类型下的全部相册及其数量。
+     *
+     * MediaStore 不支持通过 ContentResolver 做 GROUP BY，只能把 bucket 列拉回来
+     * 在内存里聚合。行数等于媒体总数（万级也就几十毫秒），比逐相册发一次查询快得多。
+     */
+    fun albums(kind: MediaKind): List<MediaAlbum> {
+        val counts = LinkedHashMap<Long, Pair<String, Int>>()
+        val idColumn = bucketIdColumn(kind)
+        val nameColumn = bucketNameColumn(kind)
+
+        resolver.query(
+            collectionFor(kind),
+            arrayOf(idColumn, nameColumn),
+            SELECTION,
+            null,
+            null,
+        )?.use { cursor ->
+            val idIdx = cursor.getColumnIndex(idColumn)
+            val nameIdx = cursor.getColumnIndex(nameColumn)
+
+            while (cursor.moveToNext()) {
+                val id = if (idIdx >= 0) cursor.getLong(idIdx) else 0L
+                val name = if (nameIdx >= 0) cursor.getString(nameIdx).orEmpty() else ""
+                val previous = counts[id]
+                counts[id] = (previous?.first ?: name) to ((previous?.second ?: 0) + 1)
+            }
+        }
+
+        return counts
+            .map { (id, value) ->
+                MediaAlbum(
+                    id = id,
+                    // 部分来源的 bucket 名为空，给个兜底文案，否则列表里会出现空白项
+                    name = value.first.ifBlank { "未命名相册" },
+                    itemCount = value.second,
+                    kind = kind,
+                )
+            }
+            .sortedWith(compareByDescending<MediaAlbum> { it.itemCount }.thenBy { it.name })
     }
 
     private fun countAndSize(kind: MediaKind): Pair<Int, Long> {
@@ -196,6 +239,13 @@ class MediaStoreDataSource @Inject constructor(
         // 次级排序用 ID 保证顺序稳定，避免同值时列表跳动
         return "$column $direction, ${MediaStore.MediaColumns._ID} DESC"
     }
+
+    /**
+     * 基础筛选 + 可选的相册限制。
+     * 相册用参数占位符而非字符串拼接，避免 bucket 名里出现引号时把 SQL 拼坏。
+     */
+    private fun selectionFor(kind: MediaKind, albumId: Long?): String =
+        if (albumId == null) SELECTION else "$SELECTION AND ${bucketIdColumn(kind)} = ?"
 
     private companion object {
         const val SELECTION =

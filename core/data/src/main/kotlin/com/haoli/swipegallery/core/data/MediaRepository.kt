@@ -3,6 +3,7 @@ package com.haoli.swipegallery.core.data
 import android.content.IntentSender
 import android.graphics.Bitmap
 import com.haoli.swipegallery.core.model.LibrarySnapshot
+import com.haoli.swipegallery.core.model.MediaAlbum
 import com.haoli.swipegallery.core.model.MediaItem
 import com.haoli.swipegallery.core.model.MediaKind
 import com.haoli.swipegallery.core.model.SortSpec
@@ -20,8 +21,18 @@ interface MediaRepository {
     /** 媒体库概览：图片/视频数量与总占用。 */
     fun observeSnapshot(): Flow<LibrarySnapshot>
 
-    /** 按类型与排序规则取媒体列表。滑卡队列由它生成。 */
-    fun observeItems(kind: MediaKind, sort: SortSpec): Flow<List<MediaItem>>
+    /**
+     * 按类型与排序规则取媒体列表。滑卡队列由它生成。
+     * [albumId] 非空时只返回该相册内的媒体。
+     */
+    fun observeItems(
+        kind: MediaKind,
+        sort: SortSpec,
+        albumId: Long? = null,
+    ): Flow<List<MediaItem>>
+
+    /** 该类型下的全部相册，按数量倒序。 */
+    fun observeAlbums(kind: MediaKind): Flow<List<MediaAlbum>>
 
     /** 网格用缩略图。图片与视频都走同一条路径。 */
     suspend fun thumbnail(uri: String, sizePx: Int): Bitmap?

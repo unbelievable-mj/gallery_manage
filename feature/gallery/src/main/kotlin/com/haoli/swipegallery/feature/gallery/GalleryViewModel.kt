@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.haoli.swipegallery.core.data.MediaRepository
 import com.haoli.swipegallery.core.model.LibrarySnapshot
+import com.haoli.swipegallery.core.model.MediaAlbum
 import com.haoli.swipegallery.core.model.MediaItem
 import com.haoli.swipegallery.core.model.MediaKind
 import com.haoli.swipegallery.core.model.SortDirection
@@ -22,6 +23,9 @@ import kotlinx.coroutines.launch
 data class GalleryUiState(
     val kind: MediaKind = MediaKind.IMAGE,
     val sort: SortSpec = SortSpec(),
+    /** null 表示「全部」，不做相册过滤。 */
+    val albumId: Long? = null,
+    val albums: List<MediaAlbum> = emptyList(),
     val items: List<MediaItem> = emptyList(),
     val snapshot: LibrarySnapshot = LibrarySnapshot(0, 0, 0L, isStub = true),
     val loading: Boolean = true,
@@ -50,7 +54,15 @@ class GalleryViewModel @Inject constructor(
 
     fun setKind(kind: MediaKind) {
         if (_state.value.kind == kind) return
-        _state.update { it.copy(kind = kind, loading = true) }
+        // 相册是按类型划分的，切换类型时必须清掉已选相册，否则会查出空列表
+        _state.update { it.copy(kind = kind, albumId = null, loading = true) }
+        reload()
+    }
+
+    /** [albumId] 传 null 表示回到「全部」。 */
+    fun selectAlbum(albumId: Long?) {
+        if (_state.value.albumId == albumId) return
+        _state.update { it.copy(albumId = albumId, loading = true) }
         reload()
     }
 
@@ -78,10 +90,20 @@ class GalleryViewModel @Inject constructor(
     fun reload() {
         viewModelScope.launch {
             val current = _state.value
-            val items = repository.observeItems(current.kind, current.sort).first()
+            val items = repository.observeItems(current.kind, current.sort, current.albumId).first()
+            val albums = repository.observeAlbums(current.kind).first()
             val snapshot = repository.observeSnapshot().first()
-            _state.update {
-                it.copy(items = items, snapshot = snapshot, loading = false)
+
+            _state.update { previous ->
+                previous.copy(
+                    items = items,
+                    albums = albums,
+                    snapshot = snapshot,
+                    loading = false,
+                    // 已选相册可能因为外部删除而消失，此时回到「全部」，
+                    // 否则界面会停在一个查不出任何内容的筛选条件上
+                    albumId = previous.albumId?.takeIf { id -> albums.any { it.id == id } },
+                )
             }
         }
     }

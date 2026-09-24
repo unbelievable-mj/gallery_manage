@@ -9,16 +9,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haoli.swipegallery.core.designsystem.theme.SwipeGalleryTheme
-import com.haoli.swipegallery.core.model.MediaItem
 import com.haoli.swipegallery.feature.gallery.GalleryRoute
 import com.haoli.swipegallery.feature.gallery.GalleryViewModel
 import com.haoli.swipegallery.feature.viewer.ViewerRoute
+import com.haoli.swipegallery.feature.viewer.ViewerViewModel
 import dagger.hilt.android.AndroidEntryPoint
 
 /**
@@ -70,28 +71,27 @@ private fun SwipeGalleryHost() {
 
     val galleryViewModel: GalleryViewModel = viewModel()
     val galleryState by galleryViewModel.state.collectAsStateWithLifecycle()
+    val viewerViewModel: ViewerViewModel = viewModel()
 
-    // null 表示查看器未打开
-    var viewerStartIndex by remember { mutableStateOf<Int?>(null) }
-    var viewerQueue by remember { mutableStateOf(emptyList<MediaItem>()) }
+    // 用 rememberSaveable：旋转屏幕后仍然停在查看器里。
+    // 队列本身存在 ViewerViewModel（Activity 作用域）中，不会丢。
+    var viewerOpen by rememberSaveable { mutableStateOf(false) }
 
-    val startIndex = viewerStartIndex
-    if (startIndex == null) {
-        GalleryRoute(
-            onOpenViewer = { index ->
-                // 把当前列表整体交给查看器，之后由它自己维护队列
-                viewerQueue = galleryState.items
-                viewerStartIndex = index
-            },
+    if (viewerOpen) {
+        ViewerRoute(
+            onClose = { viewerOpen = false },
+            // 阶段二提交后必须重新查询，让网格与系统真实状态对齐
+            onFlushed = { galleryViewModel.reload() },
             modifier = Modifier.fillMaxSize(),
         )
     } else {
-        ViewerRoute(
-            items = viewerQueue,
-            startIndex = startIndex,
-            onClose = { viewerStartIndex = null },
-            // 阶段二提交后必须重新查询，让网格与系统真实状态对齐
-            onFlushed = { galleryViewModel.reload() },
+        GalleryRoute(
+            onOpenViewer = { index ->
+                // 点击时才注入队列。若放在 ViewerRoute 里用 LaunchedEffect 注入，
+                // 旋转屏幕后组合重建会用空列表覆盖掉已有队列。
+                viewerViewModel.start(galleryState.items, index)
+                viewerOpen = true
+            },
             modifier = Modifier.fillMaxSize(),
         )
     }

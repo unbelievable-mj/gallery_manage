@@ -53,13 +53,16 @@ import com.haoli.swipegallery.core.model.TriageProgress
 /**
  * 查看器入口。
  *
- * 负责把「本地待删队列」提交给系统（两阶段提交的阶段二），
- * 并保证刷新回调一定发生在提交之后 —— 否则列表会与系统真实状态不一致。
+ * 队列**不在这里注入** —— 由调用方在用户点击时通过 `viewModel.start(...)` 一次性写入。
+ * 早先的写法是在这里用 `LaunchedEffect(items, startIndex)` 注入，那样旋转屏幕后
+ * 组合会重建、`items` 变成空列表，直接把 ViewModel 里已有的队列覆盖掉，
+ * 用户会看到「一旋转照片就没了」。
+ *
+ * 这里只负责把「本地待删队列」提交给系统（两阶段提交的阶段二），
+ * 并保证刷新回调一定发生在提交之后。
  */
 @Composable
 fun ViewerRoute(
-    items: List<MediaItem>,
-    startIndex: Int,
     onClose: () -> Unit,
     onFlushed: () -> Unit,
     modifier: Modifier = Modifier,
@@ -75,10 +78,6 @@ fun ViewerRoute(
     ) {
         onFlushed()
         onClose()
-    }
-
-    LaunchedEffect(items, startIndex) {
-        viewModel.start(items, startIndex)
     }
 
     val requestClose: () -> Unit = {
@@ -101,6 +100,7 @@ fun ViewerRoute(
         onUndo = viewModel::undo,
         onClose = requestClose,
         onLoadFullImage = viewModel::loadFullImage,
+        onPageChanged = viewModel::onPageChanged,
         modifier = modifier,
     )
 }
@@ -112,6 +112,7 @@ fun ViewerScreen(
     onUndo: () -> Unit,
     onClose: () -> Unit,
     onLoadFullImage: suspend (String) -> Bitmap?,
+    onPageChanged: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // 黑色底铺满整屏（含系统栏区域），内容让出系统栏。
@@ -145,6 +146,7 @@ fun ViewerScreen(
                         items = state.items,
                         onSwipe = onSwipe,
                         onLoadFullImage = onLoadFullImage,
+                        onPageChanged = onPageChanged,
                     )
                 }
             }
@@ -161,8 +163,14 @@ private fun TriagePager(
     items: List<MediaItem>,
     onSwipe: (SwipeDirection) -> Unit,
     onLoadFullImage: suspend (String) -> Bitmap?,
+    onPageChanged: (Int) -> Unit,
 ) {
     val pagerState = rememberPagerState(pageCount = { items.size })
+
+    // 通知外部当前页变化，用于铺预加载与更新进度
+    LaunchedEffect(pagerState.currentPage) {
+        onPageChanged(pagerState.currentPage)
+    }
 
     // 删掉最后一张后当前页可能越界，把它拉回有效范围
     LaunchedEffect(items.size) {

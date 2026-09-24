@@ -49,6 +49,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haoli.swipegallery.core.common.formatDuration
 import com.haoli.swipegallery.core.common.formatFileSize
+import com.haoli.swipegallery.core.model.MediaAlbum
 import com.haoli.swipegallery.core.model.MediaItem
 import com.haoli.swipegallery.core.model.MediaKind
 import com.haoli.swipegallery.core.model.SortDirection
@@ -90,6 +91,7 @@ fun GalleryRoute(
         onKindChange = viewModel::setKind,
         onSortFieldChange = viewModel::setSortField,
         onToggleSortDirection = viewModel::toggleSortDirection,
+        onSelectAlbum = viewModel::selectAlbum,
         onLoadThumbnail = viewModel::loadThumbnail,
         onOpenViewer = onOpenViewer,
         modifier = modifier,
@@ -104,6 +106,7 @@ fun GalleryScreen(
     onKindChange: (MediaKind) -> Unit,
     onSortFieldChange: (SortField) -> Unit,
     onToggleSortDirection: () -> Unit,
+    onSelectAlbum: (Long?) -> Unit,
     onLoadThumbnail: suspend (String) -> Bitmap?,
     onOpenViewer: (Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -126,6 +129,15 @@ fun GalleryScreen(
         )
 
         KindTabs(kind = state.kind, onKindChange = onKindChange)
+
+        // 只有一个相册时不显示这栏，否则纯属占地方
+        if (state.albums.size > 1) {
+            AlbumBar(
+                albums = state.albums,
+                selectedAlbumId = state.albumId,
+                onSelect = onSelectAlbum,
+            )
+        }
 
         if (partialAccess) {
             PartialAccessBanner(onRequestPermission = onRequestPermission)
@@ -251,6 +263,41 @@ private fun KindTabs(
             onClick = { onKindChange(MediaKind.VIDEO) },
             modifier = Modifier.weight(1f),
         )
+    }
+}
+
+/**
+ * 相册选择栏。
+ *
+ * 用户需求里明确提到「也可以选择某个相册进行处理」——
+ * 选定相册后，滑卡队列就是该相册的内容，而不是全库。
+ */
+@Composable
+private fun AlbumBar(
+    albums: List<MediaAlbum>,
+    selectedAlbumId: Long?,
+    onSelect: (Long?) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SelectableChip(
+            label = "全部",
+            selected = selectedAlbumId == null,
+            onClick = { onSelect(null) },
+        )
+        albums.forEach { album ->
+            SelectableChip(
+                label = "${album.name} · ${album.itemCount}",
+                selected = album.id == selectedAlbumId,
+                onClick = { onSelect(album.id) },
+            )
+        }
     }
 }
 

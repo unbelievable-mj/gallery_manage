@@ -12,6 +12,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
 /**
@@ -56,16 +58,28 @@ class ThumbnailLoader @Inject constructor(
     @ApplicationContext private val context: Context,
 ) : BitmapLruCache(defaultBitmapCacheBytes()) {
 
+    /**
+     * 限制并发解码数。
+     *
+     * 网格快速滚动时会有几十个单元同时请求缩略图，不加限制会瞬间申请大量位图内存，
+     * 低端机上直接 OOM。限流后多余的请求排队，用户体验几乎无感。
+     */
+    private val semaphore = Semaphore(permits = MAX_CONCURRENT_DECODES)
+
     suspend fun load(uri: String, sizePx: Int): Bitmap? = withContext(Dispatchers.IO) {
         val key = "$uri@$sizePx"
-        get(key)?.let { return@withContext it }
 
-        val bitmap = runCatching {
-            context.contentResolver.loadThumbnail(Uri.parse(uri), Size(sizePx, sizePx), null)
-        }.getOrNull() ?: return@withContext null
+        get(key) ?: semaphore.withPermit {
+            // 等锁期间可能已被别的协程填好，这里必须二次检查，
+            // 否则同一张图会被重复解码
+            get(key) ?: runCatching {
+                context.contentResolver.loadThumbnail(Uri.parse(uri), Size(sizePx, sizePx), null)
+            }.getOrNull()?.also { put(key, it) }
+        }
+    }
 
-        put(key, bitmap)
-        bitmap
+    private companion object {
+        const val MAX_CONCURRENT_DECODES = 4
     }
 }
 

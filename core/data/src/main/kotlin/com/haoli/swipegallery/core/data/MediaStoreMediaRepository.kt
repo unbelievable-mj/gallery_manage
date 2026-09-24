@@ -7,6 +7,7 @@ import com.haoli.swipegallery.core.data.media.MediaOperator
 import com.haoli.swipegallery.core.data.media.MediaStoreDataSource
 import com.haoli.swipegallery.core.data.media.ThumbnailLoader
 import com.haoli.swipegallery.core.model.LibrarySnapshot
+import com.haoli.swipegallery.core.model.MediaAlbum
 import com.haoli.swipegallery.core.model.MediaItem
 import com.haoli.swipegallery.core.model.MediaKind
 import com.haoli.swipegallery.core.model.SortSpec
@@ -36,8 +37,16 @@ class MediaStoreMediaRepository @Inject constructor(
         emit(dataSource.snapshot())
     }.flowOn(Dispatchers.IO)
 
-    override fun observeItems(kind: MediaKind, sort: SortSpec): Flow<List<MediaItem>> = flow {
-        emit(dataSource.items(kind, sort))
+    override fun observeItems(
+        kind: MediaKind,
+        sort: SortSpec,
+        albumId: Long?,
+    ): Flow<List<MediaItem>> = flow {
+        emit(dataSource.items(kind, sort, albumId))
+    }.flowOn(Dispatchers.IO)
+
+    override fun observeAlbums(kind: MediaKind): Flow<List<MediaAlbum>> = flow {
+        emit(dataSource.albums(kind))
     }.flowOn(Dispatchers.IO)
 
     override suspend fun thumbnail(uri: String, sizePx: Int): Bitmap? =

@@ -9,10 +9,13 @@ import com.haoli.swipegallery.core.model.TriageAction
 import com.haoli.swipegallery.core.model.TriageProgress
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 /** 用户在卡片上滑动的方向。 */
 enum class SwipeDirection { UP, DOWN }
@@ -59,6 +62,14 @@ class ViewerViewModel @Inject constructor(
 
     private val undoStack = ArrayDeque<TriageAction>()
 
+    private var preloadJob: Job? = null
+
+    /**
+     * 预加载张数，默认 3 —— 用户明确要求「默认缓存三张」。
+     * 后续接入设置项时由外部覆盖。
+     */
+    var preloadCount: Int = DEFAULT_PRELOAD_COUNT
+
     private var queueTotal = 0
     private var deletedCount = 0
     private var keptCount = 0
@@ -71,16 +82,20 @@ class ViewerViewModel @Inject constructor(
         deletedCount = 0
         keptCount = 0
 
+        val start = startIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0))
         _state.value = ViewerUiState(
             started = true,
             items = items,
-            currentIndex = startIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0)),
+            currentIndex = start,
             progress = TriageProgress.of(items.size, 0, 0),
         )
+        preloadAround(start)
     }
 
     fun onPageChanged(index: Int) {
+        if (_state.value.currentIndex == index) return
         _state.update { it.copy(currentIndex = index) }
+        preloadAround(index)
     }
 
     fun applySwipe(direction: SwipeDirection) {
@@ -105,6 +120,8 @@ class ViewerViewModel @Inject constructor(
             kept = keptCount,
             label = "已删除「${item.displayName}」",
         )
+        // 当前项变了，重新铺预加载
+        preloadAround(_state.value.currentIndex)
     }
 
     private fun keepCurrent() {
@@ -121,6 +138,7 @@ class ViewerViewModel @Inject constructor(
             kept = keptCount,
             label = "已保留「${item.displayName}」",
         )
+        preloadAround(_state.value.currentIndex)
     }
 
     /**
@@ -156,6 +174,7 @@ class ViewerViewModel @Inject constructor(
                 lastActionLabel = "已撤销「${action.item.displayName}」",
             )
         }
+        preloadAround(_state.value.currentIndex)
     }
 
     fun clearActionLabel() {
@@ -196,8 +215,42 @@ class ViewerViewModel @Inject constructor(
         )
     }
 
+    /**
+     * 预加载当前项前后若干张的全尺寸图。
+     *
+     * 目的是滑走之后下一张已经解码完毕，不出现空白帧。
+     *
+     * 用单个协程顺序解码而非并发：几张大图同时解码会瞬间顶高内存峰值，
+     * 低端机上容易 OOM；而且滑得快时上一轮预加载已经没有意义，
+     * 直接 cancel 掉比让它跑完更省资源。
+     */
+    private fun preloadAround(index: Int) {
+        preloadJob?.cancel()
+
+        val items = _state.value.items
+        if (items.isEmpty()) return
+
+        val targets = buildList {
+            for (offset in 1..preloadCount) {
+                items.getOrNull(index + offset)?.let { add(it) }
+            }
+            // 往回也留一张，方便用户反悔时往回翻
+            items.getOrNull(index - 1)?.let { add(it) }
+        }
+        if (targets.isEmpty()) return
+
+        preloadJob = viewModelScope.launch {
+            for (target in targets) {
+                ensureActive()
+                repository.fullImage(target.uri, FULL_IMAGE_PX)
+            }
+        }
+    }
+
     private companion object {
         /** 2048 足以覆盖 1440p 屏的全屏显示，又不至于让大图撑爆内存。 */
         const val FULL_IMAGE_PX = 2048
+
+        const val DEFAULT_PRELOAD_COUNT = 3
     }
 }
