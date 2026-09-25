@@ -21,9 +21,6 @@
     -->
     <uses-permission android:name="android.permission.MANAGE_MEDIA" />
 
-    <!-- 可选：读取照片未经编辑的 EXIF 定位信息 -->
-    <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
-
     <!--
       以下权限本应用并不需要，是依赖库通过 manifest 合并带进来的
       （WorkManager、Media3、ProfileInstaller 等会各自声明一批）。
@@ -55,9 +52,23 @@
         android:name="android.permission.WAKE_LOCK"
         tools:node="remove" />
 
+    <!--
+      关闭备份。
+
+      allowBackup 默认是 true，此时 Android 的「自动备份」会把应用私有目录
+      （DataStore 里的设置、崩溃日志）上传到**用户的 Google Drive**，
+      adb backup 也能把它们导出来。
+
+      关键在于：**这是系统行为，不需要应用申请 INTERNET 权限** ——
+      应用自己一个字节都发不出去，数据却照样离开了设备，
+      与「完全离线、数据不出本机」的说法直接矛盾。
+
+      代价是换手机时设置不会自动恢复。设置项本来就少，重设一遍即可，
+      用「不明确的数据流向」换这点便利不划算。
+    -->
     <application
         android:name=".SwipeGalleryApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"

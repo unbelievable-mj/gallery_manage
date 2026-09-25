@@ -95,13 +95,17 @@ https://gh-proxy.com/https://github.com/unbelievable-mj/gallery_manage/releases/
 | `READ_MEDIA_VISUAL_USER_SELECTED` | 部分授权：只处理你选中的内容 |
 | `READ_EXTERNAL_STORAGE` | Android 12 及以下的读取回退（仅到 API 32） |
 | `MANAGE_MEDIA` | 可选。开启后删除不再逐次弹系统确认框 |
-| `ACCESS_MEDIA_LOCATION` | 可选。读取照片未经编辑的 EXIF 定位 |
 
 **应用不联网** —— 连 `INTERNET` 权限都没有申请，因此系统层面就无法建立任何网络连接。
 安装时看到的权限列表里也只有上面这几项，没有任何网络相关权限。
 
+**已关闭系统自动备份**（`allowBackup="false"`）。这一项默认是开的，
+开着时 Android 会把应用私有目录（设置、崩溃日志）上传到用户的 Google Drive ——
+**这是系统行为，不需要应用有联网权限**，但数据确实会离开设备，与本项目的主张不符。
+代价是换手机时设置不会自动恢复。
+
 应用只在自己私有的存储目录里写一个文件（崩溃日志，用于出错时定位问题），
-所有数据都留在本机，不会上传到任何地方。
+所有数据都留在本机。
 
 ---
 
