@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.haoli.swipegallery.core.data.MediaRepository
 import com.haoli.swipegallery.core.data.settings.SettingsRepository
+import com.haoli.swipegallery.core.model.AppSettings
+import com.haoli.swipegallery.core.model.DateRange
 import com.haoli.swipegallery.core.model.LibrarySnapshot
 import com.haoli.swipegallery.core.model.MediaAlbum
 import com.haoli.swipegallery.core.model.MediaItem
