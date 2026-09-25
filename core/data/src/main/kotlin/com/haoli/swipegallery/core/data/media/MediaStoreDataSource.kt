@@ -340,8 +340,15 @@ class MediaStoreDataSource @Inject constructor(
             // DATE_TAKEN 缺失或为 0 时回退到 DATE_ADDED。
             // 两者单位不同（DATE_TAKEN 是毫秒，DATE_ADDED 是秒），所以要乘 1000 对齐，
             // 否则回退分支会比实际早 1000 倍，筛选结果完全错位。
-            clauses += "COALESCE(NULLIF(${dateTakenColumn(kind)}, 0), " +
-                "${MediaStore.MediaColumns.DATE_ADDED} * 1000) BETWEEN ? AND ?"
+            //
+            // 两边都必须 CAST 成整数，这是踩过的坑：
+            // selectionArgs 只能是字符串，而 COALESCE(...) 是**表达式、没有列亲和性**，
+            // SQLite 不会像 `bucket_id = ?` 那样自动把参数转成数字。
+            // 结果就是「整数 vs 文本」比较 —— SQLite 里整数永远小于文本，
+            // 于是 BETWEEN 恒为假，任何日期范围都筛不出东西。
+            clauses += "CAST(COALESCE(NULLIF(${dateTakenColumn(kind)}, 0), " +
+                "${MediaStore.MediaColumns.DATE_ADDED} * 1000) AS INTEGER) " +
+                "BETWEEN CAST(? AS INTEGER) AND CAST(? AS INTEGER)"
             args += dateRange.startMillis.toString()
             args += dateRange.endMillis.toString()
         }

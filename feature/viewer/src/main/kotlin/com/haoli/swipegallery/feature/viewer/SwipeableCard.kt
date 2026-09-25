@@ -32,6 +32,9 @@ import com.haoli.swipegallery.core.designsystem.theme.KeepAccent
 import kotlin.math.abs
 import com.haoli.swipegallery.core.model.SwipeEffect
 
+/** 退场动画时长。太短的话，视觉反馈还没来得及看清卡片就没了。 */
+private const val EXIT_DURATION_MS = 320
+
 /** 触发阈值：垂直位移超过屏高的这个比例即判定为一次决策。 */
 private const val TRIGGER_FRACTION = 0.22f
 
@@ -84,10 +87,12 @@ fun SwipeableCard(
                         val isDelete = current < 0f
                         val target = if (isDelete) -maxDragPx else maxDragPx
 
+                        // 退场动画要够长，否则动效一闪而过看不见。
+                        // 之前是 150ms，快速轻扫时几乎察觉不到。
                         animate(
                             initialValue = current,
                             targetValue = target,
-                            animationSpec = tween(durationMillis = 150),
+                            animationSpec = tween(durationMillis = EXIT_DURATION_MS),
                         ) { value, _ -> offsetY = value }
 
                         onSwipe(if (isDelete) SwipeDirection.UP else SwipeDirection.DOWN)
@@ -127,21 +132,21 @@ fun SwipeableCard(
 
                         // 淡出：最克制，只是「这张要没了」
                         SwipeEffect.FADE -> {
-                            alpha = 1f - progress * 0.75f
+                            alpha = 1f - progress * 0.8f
                         }
 
                         // 缩小：卡片向中心收拢，像被吸走
                         SwipeEffect.SHRINK -> {
-                            val scale = 1f - progress * 0.15f
+                            val scale = 1f - progress * 0.22f
                             scaleX = scale
                             scaleY = scale
-                            alpha = 1f - progress * 0.4f
+                            alpha = 1f - progress * 0.5f
                         }
 
                         // 压扁：纵向压扁，像被上方抽走
                         SwipeEffect.SQUASH -> {
-                            scaleY = 1f - progress * 0.3f
-                            alpha = 1f - progress * 0.6f
+                            scaleY = 1f - progress * 0.4f
+                            alpha = 1f - progress * 0.7f
                         }
                     }
                 },
