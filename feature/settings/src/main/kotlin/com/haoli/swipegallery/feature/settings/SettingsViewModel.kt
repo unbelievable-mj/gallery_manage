@@ -11,6 +11,7 @@ import com.haoli.swipegallery.core.model.MoveTarget
 import com.haoli.swipegallery.core.model.SortDirection
 import com.haoli.swipegallery.core.model.SortField
 import com.haoli.swipegallery.core.model.StorageStats
+import com.haoli.swipegallery.core.model.ThemeMode
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -117,6 +118,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.setDefaultSort(_state.value.settings.defaultSortField, direction)
         }
+    }
+
+    /** 主题模式：跟随系统 / 浅色 / 深色。 */
+    fun setThemeMode(mode: ThemeMode) {
+        viewModelScope.launch { settingsRepository.setThemeMode(mode) }
     }
 
     /** 查重阈值：文件大小相差不超过它就算「疑似重复」。 */

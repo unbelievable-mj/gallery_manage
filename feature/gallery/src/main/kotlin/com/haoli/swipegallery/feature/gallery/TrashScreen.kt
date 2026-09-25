@@ -84,6 +84,13 @@ fun TrashRoute(
         }
     }
 
+    // 进入页面时刷新。
+    //
+    // 必须显式做这一步：ViewModel 是 Activity 级的，只创建一次，
+    // 它的 init 里读的那次数据在页面第二次进入时早就过时了 ——
+    // 表现就是「第二次进回收站看不到刚删的内容」。
+    LaunchedEffect(Unit) { viewModel.reload() }
+
     BackHandler { onBack() }
 
     TrashScreen(

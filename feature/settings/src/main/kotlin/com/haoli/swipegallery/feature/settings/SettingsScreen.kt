@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +40,7 @@ import com.haoli.swipegallery.core.model.MediaAlbum
 import com.haoli.swipegallery.core.model.MoveTarget
 import com.haoli.swipegallery.core.model.SortDirection
 import com.haoli.swipegallery.core.model.SortField
+import com.haoli.swipegallery.core.model.ThemeMode
 
 @Composable
 fun SettingsRoute(
@@ -48,6 +50,9 @@ fun SettingsRoute(
     viewModel: SettingsViewModel = viewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+
+    // 进入时重新统计：ViewModel 只创建一次，init 里那次数据早已过时
+    LaunchedEffect(Unit) { viewModel.reloadStats() }
 
     BackHandler { onBack() }
 
@@ -60,6 +65,7 @@ fun SettingsRoute(
         onSortDirectionChange = viewModel::setSortDirection,
         onMoveTargetChange = viewModel::setMoveTarget,
         onDuplicateThresholdChange = viewModel::setDuplicateThreshold,
+        onThemeModeChange = viewModel::setThemeMode,
         modifier = modifier,
     )
 }
@@ -74,6 +80,7 @@ fun SettingsScreen(
     onSortDirectionChange: (SortDirection) -> Unit,
     onMoveTargetChange: (MediaAlbum?) -> Unit,
     onDuplicateThresholdChange: (Long) -> Unit,
+    onThemeModeChange: (ThemeMode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -107,6 +114,20 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = 32.dp),
         ) {
+            SectionTitle("外观")
+
+            SettingBlock(
+                title = "主题",
+                description = "跟随系统时，手机切浅色这里就是浅色，反之是深色。",
+            ) {
+                val modes = ThemeMode.entries
+                ChipRow(
+                    options = modes.map { it.label },
+                    selectedIndex = modes.indexOf(state.settings.themeMode),
+                    onSelect = { index -> onThemeModeChange(modes[index]) },
+                )
+            }
+
             SectionTitle("滑卡")
 
             SettingBlock(

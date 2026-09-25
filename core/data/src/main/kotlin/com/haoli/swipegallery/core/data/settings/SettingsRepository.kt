@@ -12,6 +12,7 @@ import com.haoli.swipegallery.core.model.AppSettings
 import com.haoli.swipegallery.core.model.MoveTarget
 import com.haoli.swipegallery.core.model.SortDirection
 import com.haoli.swipegallery.core.model.SortField
+import com.haoli.swipegallery.core.model.ThemeMode
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -31,6 +32,7 @@ interface SettingsRepository {
     suspend fun setMoveTarget(target: MoveTarget?)
     suspend fun setDefaultSort(field: SortField, direction: SortDirection)
     suspend fun setDuplicateThreshold(bytes: Long)
+    suspend fun setThemeMode(mode: ThemeMode)
 }
 
 /** 必须声明为 Context 的顶层扩展，DataStore 要求同一文件只创建一次实例。 */
@@ -56,6 +58,8 @@ class DataStoreSettingsRepository @Inject constructor(
             duplicateThresholdBytes = prefs[Keys.DUPLICATE_THRESHOLD]
                 ?.let(AppSettings::sanitizeDuplicateThreshold)
                 ?: AppSettings.DEFAULT_DUPLICATE_THRESHOLD_BYTES,
+            themeMode = prefs[Keys.THEME_MODE].toEnumOrNull<ThemeMode>()
+                ?: ThemeMode.SYSTEM,
         )
     }
 
@@ -107,6 +111,10 @@ class DataStoreSettingsRepository @Inject constructor(
         context.settingsDataStore.edit { it[Keys.DUPLICATE_THRESHOLD] = safe }
     }
 
+    override suspend fun setThemeMode(mode: ThemeMode) {
+        context.settingsDataStore.edit { it[Keys.THEME_MODE] = mode.name }
+    }
+
     /**
      * 枚举名解析失败时返回 null 而不是抛异常。
      *
@@ -124,5 +132,6 @@ class DataStoreSettingsRepository @Inject constructor(
         val SORT_FIELD = stringPreferencesKey("sort_field")
         val SORT_DIRECTION = stringPreferencesKey("sort_direction")
         val DUPLICATE_THRESHOLD = longPreferencesKey("duplicate_threshold")
+        val THEME_MODE = stringPreferencesKey("theme_mode")
     }
 }

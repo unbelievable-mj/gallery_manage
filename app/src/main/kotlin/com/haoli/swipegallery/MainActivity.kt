@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -16,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haoli.swipegallery.core.designsystem.theme.SwipeGalleryTheme
+import com.haoli.swipegallery.core.model.ThemeMode
 import com.haoli.swipegallery.feature.gallery.GalleryRoute
 import com.haoli.swipegallery.feature.gallery.GalleryViewModel
 import com.haoli.swipegallery.feature.gallery.DuplicateRoute
@@ -41,7 +43,17 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            SwipeGalleryTheme {
+            val appViewModel: AppViewModel = viewModel()
+            val themeMode by appViewModel.themeMode.collectAsStateWithLifecycle()
+
+            SwipeGalleryTheme(
+                darkTheme = when (themeMode) {
+                    // 跟随系统：手机切浅色这里就是浅色，反之是深色
+                    ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                    ThemeMode.LIGHT -> false
+                    ThemeMode.DARK -> true
+                },
+            ) {
                 SwipeGalleryHost()
             }
         }

@@ -13,6 +13,17 @@ data class MoveTarget(
 )
 
 /**
+ * 主题模式。
+ *
+ * 默认 [SYSTEM]：跟随手机设置，手机切浅色这里就是浅色，反之是深色。
+ */
+enum class ThemeMode(val label: String) {
+    SYSTEM("跟随系统"),
+    LIGHT("浅色"),
+    DARK("深色"),
+}
+
+/**
  * 用户可配置项。
  *
  * 全部带默认值，因此首次启动不需要任何初始化逻辑 —— 读不到值时直接用默认，
@@ -47,6 +58,9 @@ data class AppSettings(
      * 默认 20KB —— 同一张图被不同应用重新压缩保存，体积往往只差几 KB 到几十 KB。
      */
     val duplicateThresholdBytes: Long = DEFAULT_DUPLICATE_THRESHOLD_BYTES,
+
+    /** 主题模式。 */
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
 ) {
     val defaultSort: SortSpec
         get() = SortSpec(field = defaultSortField, direction = defaultSortDirection)
