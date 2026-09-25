@@ -1,5 +1,6 @@
 package com.haoli.swipegallery.feature.gallery
 
+import android.app.Activity
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
