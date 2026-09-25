@@ -93,10 +93,15 @@ https://gh-proxy.com/https://github.com/unbelievable-mj/gallery_manage/releases/
 | --- | --- |
 | `READ_MEDIA_IMAGES` / `READ_MEDIA_VIDEO` | 读取图片与视频 |
 | `READ_MEDIA_VISUAL_USER_SELECTED` | 部分授权：只处理你选中的内容 |
+| `READ_EXTERNAL_STORAGE` | Android 12 及以下的读取回退（仅到 API 32） |
 | `MANAGE_MEDIA` | 可选。开启后删除不再逐次弹系统确认框 |
-| `POST_NOTIFICATIONS` | 可选。后台任务进度通知 |
+| `ACCESS_MEDIA_LOCATION` | 可选。读取照片未经编辑的 EXIF 定位 |
 
-应用不联网，所有数据都留在本机。
+**应用不联网** —— 连 `INTERNET` 权限都没有申请，因此系统层面就无法建立任何网络连接。
+安装时看到的权限列表里也只有上面这几项，没有任何网络相关权限。
+
+应用只在自己私有的存储目录里写一个文件（崩溃日志，用于出错时定位问题），
+所有数据都留在本机，不会上传到任何地方。
 
 ---
 

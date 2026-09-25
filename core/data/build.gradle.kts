@@ -31,13 +31,7 @@ dependencies {
 
     // 以下依赖在 M0 阶段仅用于验证版本解析，M1/M5 起开始真正使用
     implementation(libs.androidx.datastore.preferences)
-    implementation(libs.androidx.paging.runtime)
-    implementation(libs.androidx.media3.exoplayer)
-    implementation(libs.androidx.media3.common)
     implementation(libs.androidx.exifinterface)
-    implementation(libs.androidx.work.runtime.ktx)
-    implementation(libs.coil.compose)
-    implementation(libs.coil.video)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

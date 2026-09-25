@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!--
       读取媒体。
@@ -23,8 +24,36 @@
     <!-- 可选：读取照片未经编辑的 EXIF 定位信息 -->
     <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
 
-    <!-- 可选：后台清理任务的进度通知 -->
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!--
+      以下权限本应用并不需要，是依赖库通过 manifest 合并带进来的
+      （WorkManager、Media3、ProfileInstaller 等会各自声明一批）。
+      这里逐个显式移除，让「安装时看到的权限列表」与「代码里真正用到的能力」
+      完全一致 —— 对一个相册工具来说，权限清单本身就是可信度的一部分。
+
+      ACCESS_NETWORK_STATE 尤其要移除：它本身不能联网，只允许查询网络状态，
+      但留着一个网络相关权限会让用户难以判断。应用不联网，就不该有它的影子。
+      注：应用从未申请 INTERNET，因此系统层面就无法建立任何网络连接。
+
+      若将来出现播放异常，优先怀疑这里 —— 把对应行删掉即可恢复。
+    -->
+    <uses-permission
+        android:name="android.permission.ACCESS_NETWORK_STATE"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.DUMP"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.RECEIVE_BOOT_COMPLETED"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.BIND_JOB_SERVICE"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.FOREGROUND_SERVICE"
+        tools:node="remove" />
+    <uses-permission
+        android:name="android.permission.WAKE_LOCK"
+        tools:node="remove" />
 
     <application
         android:name=".SwipeGalleryApp"
