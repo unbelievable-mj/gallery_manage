@@ -54,6 +54,7 @@ import com.haoli.swipegallery.core.common.formatFileSize
 import com.haoli.swipegallery.core.model.MediaItem
 import com.haoli.swipegallery.core.model.MediaKind
 import com.haoli.swipegallery.core.model.TriageProgress
+import com.haoli.swipegallery.core.model.SwipeEffect
 import kotlinx.coroutines.launch
 
 /**
@@ -75,6 +76,7 @@ fun ViewerRoute(
     viewModel: ViewerViewModel = viewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val swipeEffect by viewModel.swipeEffect.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var closing by remember { mutableStateOf(false) }
 
@@ -185,6 +187,7 @@ fun ViewerScreen(
     onClose: () -> Unit,
     onLoadFullImage: suspend (String) -> Bitmap?,
     onPageChanged: (Int) -> Unit,
+    swipeEffect: SwipeEffect = SwipeEffect.NONE,
     modifier: Modifier = Modifier,
 ) {
     // 黑色底铺满整屏（含系统栏区域），内容让出系统栏。
@@ -220,6 +223,7 @@ fun ViewerScreen(
                         onSwipe = onSwipe,
                         onLoadFullImage = onLoadFullImage,
                         onPageChanged = onPageChanged,
+                        swipeEffect = swipeEffect,
                     )
                 }
             }
@@ -238,6 +242,7 @@ private fun TriagePager(
     onSwipe: (SwipeDirection) -> Unit,
     onLoadFullImage: suspend (String) -> Bitmap?,
     onPageChanged: (Int) -> Unit,
+    swipeEffect: SwipeEffect,
 ) {
     // initialPage 必须取队列里的起始位置。
     // 不传的话 Pager 永远从第 0 页开始 —— 用户点第 50 张进去，也会从第一张开始处理，
@@ -269,6 +274,7 @@ private fun TriagePager(
         val item = items.getOrNull(page) ?: return@HorizontalPager
         SwipeableCard(
             onSwipe = onSwipe,
+            effect = swipeEffect,
             modifier = Modifier.fillMaxSize(),
         ) {
             ViewerPage(

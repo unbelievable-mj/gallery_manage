@@ -41,6 +41,7 @@ import com.haoli.swipegallery.core.model.MoveTarget
 import com.haoli.swipegallery.core.model.SortDirection
 import com.haoli.swipegallery.core.model.SortField
 import com.haoli.swipegallery.core.model.ThemeMode
+import com.haoli.swipegallery.core.model.SwipeEffect
 
 @Composable
 fun SettingsRoute(
@@ -66,6 +67,7 @@ fun SettingsRoute(
         onMoveTargetChange = viewModel::setMoveTarget,
         onDuplicateThresholdChange = viewModel::setDuplicateThreshold,
         onThemeModeChange = viewModel::setThemeMode,
+        onSwipeEffectChange = viewModel::setSwipeEffect,
         modifier = modifier,
     )
 }
@@ -81,6 +83,7 @@ fun SettingsScreen(
     onMoveTargetChange: (MediaAlbum?) -> Unit,
     onDuplicateThresholdChange: (Long) -> Unit,
     onThemeModeChange: (ThemeMode) -> Unit,
+    onSwipeEffectChange: (SwipeEffect) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -146,6 +149,19 @@ fun SettingsScreen(
                 albums = state.albums,
                 onSelect = onMoveTargetChange,
             )
+
+            SettingBlock(
+                title = "上滑删除的效果",
+                description = "只在「上滑扔掉」这个方向生效。下滑是保留，语义不同，" +
+                    "加动效反而像在强调一个不该强调的动作。",
+            ) {
+                val effects = SwipeEffect.entries
+                ChipRow(
+                    options = effects.map { it.label },
+                    selectedIndex = effects.indexOf(state.settings.swipeEffect),
+                    onSelect = { index -> onSwipeEffectChange(effects[index]) },
+                )
+            }
 
             SectionTitle("浏览")
 

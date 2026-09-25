@@ -12,6 +12,7 @@ import com.haoli.swipegallery.core.model.MoveTarget
 import com.haoli.swipegallery.core.model.MediaItem
 import com.haoli.swipegallery.core.model.TriageAction
 import com.haoli.swipegallery.core.model.TriageProgress
+import com.haoli.swipegallery.core.model.SwipeEffect
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -102,6 +103,15 @@ class ViewerViewModel @Inject constructor(
      */
     private var preloadCount: Int = AppSettings.DEFAULT_PRELOAD_COUNT
 
+    /**
+     * 上滑删除的视觉反馈。
+     *
+     * 用 StateFlow 而不是普通字段：它只影响界面绘制，不参与逻辑判断，
+     * 让 Compose 直接订阅比每次读字段更直接。
+     */
+    private val _swipeEffect = MutableStateFlow(SwipeEffect.NONE)
+    val swipeEffect: StateFlow<SwipeEffect> = _swipeEffect.asStateFlow()
+
     /** 下滑的落点。null 表示「保留在原相册」，此时下滑不改动文件。 */
     private var moveTarget: MoveTarget? = null
 
@@ -119,6 +129,7 @@ class ViewerViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.settings.collect { loaded ->
                 preloadCount = loaded.preloadCount
+                _swipeEffect.value = loaded.swipeEffect
                 moveTarget = loaded.moveTarget
                 _state.update { it.copy(moveTargetName = loaded.moveTarget?.albumName) }
             }

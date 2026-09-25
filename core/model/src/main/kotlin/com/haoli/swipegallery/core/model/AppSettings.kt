@@ -13,6 +13,20 @@ data class MoveTarget(
 )
 
 /**
+ * 上滑删除时的视觉反馈。
+ *
+ * 三种效果都**跟随拖拽进度**而不是在松手后播放退场动画 ——
+ * 后者要等动画播完才能移除卡片，会给操作引入延迟；
+ * 跟随手指则没有这个问题，拖到哪就反馈到哪。
+ */
+enum class SwipeEffect(val label: String) {
+    NONE("无"),
+    FADE("淡出"),
+    SHRINK("缩小"),
+    SQUASH("压扁"),
+}
+
+/**
  * 主题模式。
  *
  * 默认 [SYSTEM]：跟随手机设置，手机切浅色这里就是浅色，反之是深色。
@@ -69,6 +83,9 @@ data class AppSettings(
      * 下次打开应该保持，而不是又回到默认值。
      */
     val gridColumns: Int = DEFAULT_GRID_COLUMNS,
+
+    /** 上滑删除时的视觉反馈。 */
+    val swipeEffect: SwipeEffect = SwipeEffect.NONE,
 
     /**
      * 是否已确认过首次启动的免责声明。

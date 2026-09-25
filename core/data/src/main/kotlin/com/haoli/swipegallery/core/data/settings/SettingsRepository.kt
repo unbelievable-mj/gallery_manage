@@ -13,6 +13,7 @@ import com.haoli.swipegallery.core.model.AppSettings
 import com.haoli.swipegallery.core.model.MoveTarget
 import com.haoli.swipegallery.core.model.SortDirection
 import com.haoli.swipegallery.core.model.SortField
+import com.haoli.swipegallery.core.model.SwipeEffect
 import com.haoli.swipegallery.core.model.ThemeMode
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -36,6 +37,7 @@ interface SettingsRepository {
     suspend fun setThemeMode(mode: ThemeMode)
     suspend fun setDisclaimerAccepted(accepted: Boolean)
     suspend fun setGridColumns(columns: Int)
+    suspend fun setSwipeEffect(effect: SwipeEffect)
 }
 
 /** 必须声明为 Context 的顶层扩展，DataStore 要求同一文件只创建一次实例。 */
@@ -67,6 +69,8 @@ class DataStoreSettingsRepository @Inject constructor(
             gridColumns = prefs[Keys.GRID_COLUMNS]
                 ?.let(AppSettings::sanitizeGridColumns)
                 ?: AppSettings.DEFAULT_GRID_COLUMNS,
+            swipeEffect = prefs[Keys.SWIPE_EFFECT].toEnumOrNull<SwipeEffect>()
+                ?: SwipeEffect.NONE,
         )
     }
 
@@ -131,6 +135,10 @@ class DataStoreSettingsRepository @Inject constructor(
         context.settingsDataStore.edit { it[Keys.GRID_COLUMNS] = safe }
     }
 
+    override suspend fun setSwipeEffect(effect: SwipeEffect) {
+        context.settingsDataStore.edit { it[Keys.SWIPE_EFFECT] = effect.name }
+    }
+
     /**
      * 枚举名解析失败时返回 null 而不是抛异常。
      *
@@ -151,5 +159,6 @@ class DataStoreSettingsRepository @Inject constructor(
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val DISCLAIMER_ACCEPTED = booleanPreferencesKey("disclaimer_accepted")
         val GRID_COLUMNS = intPreferencesKey("grid_columns")
+        val SWIPE_EFFECT = stringPreferencesKey("swipe_effect")
     }
 }

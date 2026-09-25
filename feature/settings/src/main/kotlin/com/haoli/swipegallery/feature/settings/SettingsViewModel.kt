@@ -12,6 +12,7 @@ import com.haoli.swipegallery.core.model.SortDirection
 import com.haoli.swipegallery.core.model.SortField
 import com.haoli.swipegallery.core.model.StorageStats
 import com.haoli.swipegallery.core.model.ThemeMode
+import com.haoli.swipegallery.core.model.SwipeEffect
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -118,6 +119,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             settingsRepository.setDefaultSort(_state.value.settings.defaultSortField, direction)
         }
+    }
+
+    /** 上滑删除时的视觉反馈。 */
+    fun setSwipeEffect(effect: SwipeEffect) {
+        viewModelScope.launch { settingsRepository.setSwipeEffect(effect) }
     }
 
     /** 主题模式：跟随系统 / 浅色 / 深色。 */

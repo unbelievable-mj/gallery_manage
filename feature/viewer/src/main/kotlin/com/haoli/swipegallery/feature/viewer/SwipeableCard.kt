@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import com.haoli.swipegallery.core.designsystem.theme.DeleteAccent
 import com.haoli.swipegallery.core.designsystem.theme.KeepAccent
 import kotlin.math.abs
+import com.haoli.swipegallery.core.model.SwipeEffect
 
 /** 触发阈值：垂直位移超过屏高的这个比例即判定为一次决策。 */
 private const val TRIGGER_FRACTION = 0.22f
@@ -52,6 +53,7 @@ private const val MAX_DRAG_FRACTION = 0.6f
 @Composable
 fun SwipeableCard(
     onSwipe: (SwipeDirection) -> Unit,
+    effect: SwipeEffect = SwipeEffect.NONE,
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
@@ -110,6 +112,38 @@ fun SwipeableCard(
                     // 旋转会让卡片看起来沿弧线甩出去（像扇子展开），
                     // 而删除 / 保留这个动作是「直上直下」的，弧线反而误导方向感。
                     translationY = offsetY
+
+                    // 视觉反馈只在「上滑 = 扔掉」这个方向做。
+                    // 下滑是保留，语义不同 —— 给一个不该被强调的动作加动效，
+                    // 反而会让人以为「保留」也是一种需要确认的操作。
+                    val progress = if (offsetY < 0f) {
+                        (abs(offsetY) / triggerPx).coerceIn(0f, 1f)
+                    } else {
+                        0f
+                    }
+
+                    when (effect) {
+                        SwipeEffect.NONE -> Unit
+
+                        // 淡出：最克制，只是「这张要没了」
+                        SwipeEffect.FADE -> {
+                            alpha = 1f - progress * 0.75f
+                        }
+
+                        // 缩小：卡片向中心收拢，像被吸走
+                        SwipeEffect.SHRINK -> {
+                            val scale = 1f - progress * 0.15f
+                            scaleX = scale
+                            scaleY = scale
+                            alpha = 1f - progress * 0.4f
+                        }
+
+                        // 压扁：纵向压扁，像被上方抽走
+                        SwipeEffect.SQUASH -> {
+                            scaleY = 1f - progress * 0.3f
+                            alpha = 1f - progress * 0.6f
+                        }
+                    }
                 },
         ) {
             content()
