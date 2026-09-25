@@ -65,15 +65,20 @@ fun TrashRoute(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
+    // 记住这次发起的是不是「永久删除」：取回与删除的结果处理方式不同
+    var purgeInFlight by remember { mutableStateOf(false) }
+
     val actionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult(),
-    ) {
-        // 无论用户同意还是取消都重读一次：同意则列表已变，取消则内容原样保留
-        viewModel.onActionFinished()
+    ) { result ->
+        val confirmed = purgeInFlight && result.resultCode == Activity.RESULT_OK
+        purgeInFlight = false
+        viewModel.onActionFinished(removed = confirmed)
     }
 
-    val launch: (android.content.IntentSender?) -> Unit = { sender ->
+    val launch: (android.content.IntentSender?, Boolean) -> Unit = { sender, isPurge ->
         if (sender != null) {
+            purgeInFlight = isPurge
             actionLauncher.launch(IntentSenderRequest.Builder(sender).build())
         }
     }
@@ -86,8 +91,8 @@ fun TrashRoute(
         onToggleSelection = viewModel::toggleSelection,
         onSelectAll = viewModel::selectAll,
         onClearSelection = viewModel::clearSelection,
-        onRestore = { launch(viewModel.restoreSelected()) },
-        onPurge = { launch(viewModel.purgeSelected()) },
+        onRestore = { launch(viewModel.restoreSelected(), false) },
+        onPurge = { launch(viewModel.purgeSelected(), true) },
         onLoadThumbnail = viewModel::loadThumbnail,
         modifier = modifier,
     )

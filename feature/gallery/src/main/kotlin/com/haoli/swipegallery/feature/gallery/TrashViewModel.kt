@@ -8,6 +8,7 @@ import com.haoli.swipegallery.core.data.MediaRepository
 import com.haoli.swipegallery.core.model.MediaItem
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -63,21 +64,24 @@ class TrashViewModel @Inject constructor(
      * 查询在未实现回收站的设备上可能抛异常，这里兜住，让页面退化成空列表而不是崩掉。
      */
     fun reload() {
-        viewModelScope.launch {
-            val items = try {
-                repository.observeTrash().first()
-            } catch (_: Exception) {
-                emptyList()
-            }
-            val alive = items.mapTo(HashSet()) { it.id }
-            _state.update { previous ->
-                previous.copy(
-                    items = items,
-                    loading = false,
-                    // 选中项可能已被别处取回或清理，剔除失效的
-                    selectedIds = previous.selectedIds intersect alive,
-                )
-            }
+        viewModelScope.launch { readOnce() }
+    }
+
+    /** 读一次系统回收站并写入状态。 */
+    private suspend fun readOnce() {
+        val items = try {
+            repository.observeTrash().first()
+        } catch (_: Exception) {
+            emptyList()
+        }
+        val alive = items.mapTo(HashSet()) { it.id }
+        _state.update { previous ->
+            previous.copy(
+                items = items,
+                loading = false,
+                // 选中项可能已被别处取回或清理，剔除失效的
+                selectedIds = previous.selectedIds intersect alive,
+            )
         }
     }
 
@@ -111,11 +115,34 @@ class TrashViewModel @Inject constructor(
     /**
      * 系统对话框返回后调用。
      *
-     * 无论用户同意还是取消都重读一次：同意则列表已变，取消则内容原样保留。
+     * [removed] 为 true 表示用户确认了永久删除。
+     *
+     * 这时必须**乐观地**先把选中项从列表里摘掉：系统的删除是异步落库的，
+     * 授权框返回的那一瞬间 MediaProvider 往往还没写完，立刻重查拿到的仍是旧结果 ——
+     * 这正是「清理完必须退出重进才刷新」的原因。
+     *
+     * 摘掉之后再延迟重查几次，与系统真实状态对齐（避免乐观更新与真实状态长期不一致）。
      */
-    fun onActionFinished() {
-        _state.update { it.copy(selectedIds = emptySet()) }
-        reload()
+    fun onActionFinished(removed: Boolean) {
+        val selected = _state.value.selectedIds
+
+        _state.update { snapshot ->
+            snapshot.copy(
+                items = if (removed) {
+                    snapshot.items.filterNot { it.id in selected }
+                } else {
+                    snapshot.items
+                },
+                selectedIds = emptySet(),
+            )
+        }
+
+        viewModelScope.launch {
+            repeat(RECONCILE_ATTEMPTS) { attempt ->
+                if (attempt > 0) delay(RECONCILE_INTERVAL_MS)
+                readOnce()
+            }
+        }
     }
 
     private fun selectedUris(): List<String>? {
@@ -128,5 +155,9 @@ class TrashViewModel @Inject constructor(
 
     private companion object {
         const val THUMBNAIL_PX = 320
+
+        /** 与系统状态对齐的重试次数与间隔：删除落库需要一点时间，一次查询常常赶不上。 */
+        const val RECONCILE_ATTEMPTS = 4
+        const val RECONCILE_INTERVAL_MS = 600L
     }
 }

@@ -76,9 +76,9 @@ fun DuplicateRoute(
 
     val trashLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartIntentSenderForResult(),
-    ) {
-        // 无论同意还是取消都重扫：同意则文件已进回收站，取消则原样保留
-        viewModel.onTrashFinished()
+    ) { result ->
+        // 只有用户确认了才乐观摘除；取消则内容原样保留
+        viewModel.onTrashFinished(removed = result.resultCode == Activity.RESULT_OK)
     }
 
     BackHandler { onBack() }

@@ -12,6 +12,7 @@ import com.haoli.swipegallery.core.model.SortSpec
 import com.haoli.swipegallery.core.model.groupSuspectedDuplicates
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -54,8 +55,6 @@ class DuplicateViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(DuplicateUiState())
     val state: StateFlow<DuplicateUiState> = _state.asStateFlow()
-
-    private var pendingUris: List<String> = emptyList()
 
     /**
      * 在当前类型与相册范围内扫描。
@@ -133,23 +132,51 @@ class DuplicateViewModel @Inject constructor(
     fun trashSelected(): IntentSender? {
         val uris = _state.value.selectedUris.toList()
         if (uris.isEmpty()) return null
-        pendingUris = uris
         return repository.trashRequest(uris)
     }
 
     /**
-     * 系统对话框返回后重扫：同意则文件已进回收站，取消则内容原样保留。
-     * 沿用原来的扫描范围，用户不必重新选一遍。
+     * 系统对话框返回后重扫。
+     *
+     * [removed] 为 true 表示用户确认了移入回收站。这时先**乐观地**把已选内容
+     * 从分组里摘掉：系统是异步落库的，授权框返回的瞬间立刻重扫拿到的还是旧数据，
+     * 用户会看到「删完了但东西还在」。
+     *
+     * 摘掉之后再延迟重扫一次，与真实状态对齐。沿用原来的扫描范围，
+     * 用户不必重新选一遍。
      */
-    fun onTrashFinished() {
-        pendingUris = emptyList()
+    fun onTrashFinished(removed: Boolean) {
         val snapshot = _state.value
-        scan(snapshot.kind, snapshot.albumId, snapshot.albumName)
+
+        if (removed) {
+            val gone = snapshot.selectedUris
+            _state.update { current ->
+                current.copy(
+                    scan = current.scan.copy(
+                        groups = current.scan.groups
+                            .map { group ->
+                                group.copy(items = group.items.filterNot { it.uri in gone })
+                            }
+                            // 摘掉后不足两个的组不再是「一组重复」
+                            .filter { it.items.size >= 2 },
+                    ),
+                    selectedUris = emptySet(),
+                )
+            }
+        }
+
+        viewModelScope.launch {
+            delay(RECONCILE_DELAY_MS)
+            scan(snapshot.kind, snapshot.albumId, snapshot.albumName)
+        }
     }
 
     suspend fun loadThumbnail(uri: String): Bitmap? = repository.thumbnail(uri, THUMBNAIL_PX)
 
     private companion object {
         const val THUMBNAIL_PX = 320
+
+        /** 等系统把删除落库之后再重扫，否则拿到的还是旧数据。 */
+        const val RECONCILE_DELAY_MS = 1200L
     }
 }
