@@ -10,6 +10,7 @@ import com.haoli.swipegallery.core.model.AlbumUsage
 import com.haoli.swipegallery.core.model.LibrarySnapshot
 import com.haoli.swipegallery.core.model.MediaAlbum
 import com.haoli.swipegallery.core.model.MediaItem
+import com.haoli.swipegallery.core.model.DateRange
 import com.haoli.swipegallery.core.model.MediaKind
 import com.haoli.swipegallery.core.model.SortSpec
 import com.haoli.swipegallery.core.model.StorageStats
@@ -44,10 +45,11 @@ class MediaStoreMediaRepository @Inject constructor(
         kind: MediaKind,
         sort: SortSpec,
         albumId: Long?,
+        dateRange: DateRange?,
     ): Flow<List<MediaItem>> = flow {
         // 不需要额外剔除已删项：查询本身就带 IS_TRASHED = 0，
         // 系统回收站里的内容不会出现在结果中
-        emit(dataSource.items(kind, sort, albumId))
+        emit(dataSource.items(kind, sort, albumId, dateRange))
     }.flowOn(Dispatchers.IO)
 
     override fun observeAlbums(kind: MediaKind): Flow<List<MediaAlbum>> = flow {

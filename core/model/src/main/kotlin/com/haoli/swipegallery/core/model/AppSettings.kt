@@ -63,6 +63,14 @@ data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
 
     /**
+     * 网格每行显示几列。
+     *
+     * 由首屏双指缩放控制，也在这里持久化 —— 用户调到自己顺眼的大小之后，
+     * 下次打开应该保持，而不是又回到默认值。
+     */
+    val gridColumns: Int = DEFAULT_GRID_COLUMNS,
+
+    /**
      * 是否已确认过首次启动的免责声明。
      *
      * 只在首次启动时弹一次；确认后不再打扰。
@@ -80,6 +88,16 @@ data class AppSettings(
         val PRELOAD_RANGE = MIN_PRELOAD_COUNT..MAX_PRELOAD_COUNT
 
         const val DEFAULT_DUPLICATE_THRESHOLD_BYTES = 20L * 1024L
+
+        const val DEFAULT_GRID_COLUMNS = 3
+        const val MIN_GRID_COLUMNS = 2
+        const val MAX_GRID_COLUMNS = 8
+
+        val GRID_COLUMN_RANGE = MIN_GRID_COLUMNS..MAX_GRID_COLUMNS
+
+        /** 把任意输入夹到合法范围，避免坏数据让网格列数失控。 */
+        fun sanitizeGridColumns(value: Int): Int =
+            value.coerceIn(MIN_GRID_COLUMNS, MAX_GRID_COLUMNS)
 
         /**
          * 可选的阈值档位。

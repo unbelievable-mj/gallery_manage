@@ -7,6 +7,9 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -41,6 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
@@ -49,6 +54,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.haoli.swipegallery.core.common.formatDuration
 import com.haoli.swipegallery.core.common.formatFileSize
+import com.haoli.swipegallery.core.model.DateRange
 import com.haoli.swipegallery.core.model.MediaAlbum
 import com.haoli.swipegallery.core.model.MediaItem
 import com.haoli.swipegallery.core.model.MediaKind
@@ -73,6 +79,23 @@ fun GalleryRoute(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
+    var showDatePicker by remember { mutableStateOf(false) }
+
+    if (showDatePicker) {
+        DateRangeDialog(
+            current = state.dateRange,
+            onDismiss = { showDatePicker = false },
+            onConfirm = { range ->
+                viewModel.setDateRange(range)
+                showDatePicker = false
+            },
+            onClear = {
+                viewModel.setDateRange(null)
+                showDatePicker = false
+            },
+        )
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
     ) {
@@ -95,6 +118,9 @@ fun GalleryRoute(
         onSortFieldChange = viewModel::setSortField,
         onToggleSortDirection = viewModel::toggleSortDirection,
         onSelectAlbum = viewModel::selectAlbum,
+        onOpenDatePicker = { showDatePicker = true },
+        onClearDateRange = { viewModel.setDateRange(null) },
+        onZoomColumns = viewModel::zoomColumns,
         onLoadThumbnail = viewModel::loadThumbnail,
         onOpenViewer = onOpenViewer,
         onOpenTrash = onOpenTrash,
@@ -113,6 +139,9 @@ fun GalleryScreen(
     onSortFieldChange: (SortField) -> Unit,
     onToggleSortDirection: () -> Unit,
     onSelectAlbum: (Long?) -> Unit,
+    onOpenDatePicker: () -> Unit,
+    onClearDateRange: () -> Unit,
+    onZoomColumns: (Int) -> Unit,
     onLoadThumbnail: suspend (String) -> Bitmap?,
     onOpenViewer: (Int) -> Unit,
     onOpenTrash: () -> Unit,
@@ -133,6 +162,12 @@ fun GalleryScreen(
             onOpenTrash = onOpenTrash,
             onOpenDuplicates = onOpenDuplicates,
             onOpenSettings = onOpenSettings,
+        )
+
+        DateFilterBar(
+            range = state.dateRange,
+            onOpen = onOpenDatePicker,
+            onClear = onClearDateRange,
         )
 
         SortBar(
@@ -176,12 +211,17 @@ fun GalleryScreen(
                     CircularProgressIndicator()
                 }
 
-                state.items.isEmpty() -> EmptyState(kind = state.kind)
+                state.items.isEmpty() -> EmptyState(
+                    kind = state.kind,
+                    dateFiltered = state.dateRange != null,
+                )
 
                 else -> MediaGrid(
                     items = state.items,
                     onLoadThumbnail = onLoadThumbnail,
                     onOpenViewer = onOpenViewer,
+                    onZoomColumns = onZoomColumns,
+                    columns = state.columns,
                 )
             }
         }
@@ -235,6 +275,72 @@ private fun HeaderAction(label: String, onClick: () -> Unit) {
             .padding(horizontal = 10.dp, vertical = 6.dp),
     )
 }
+
+/** 双指缩放换一档所需的累积幅度。留出余量，避免轻微抖动就跳档。 */
+private const val ZOOM_OUT_STEP = 1.25f
+private const val ZOOM_IN_STEP = 0.8f
+
+/**
+ * 日期筛选条。
+ *
+ * 只占一行：未筛选时是一个「日期：全部」的入口，选好之后直接显示区间并可一键清除。
+ * 筛选条件始终可见，用户不会出现「怎么少了这么多照片」的困惑。
+ */
+@Composable
+private fun DateFilterBar(
+    range: DateRange?,
+    onOpen: () -> Unit,
+    onClear: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = if (range == null) {
+                MaterialTheme.colorScheme.surfaceVariant
+            } else {
+                MaterialTheme.colorScheme.primary
+            },
+            modifier = Modifier.clickable(onClick = onOpen),
+        ) {
+            Text(
+                text = if (range == null) {
+                    "日期：全部"
+                } else {
+                    "${formatDay(range.startMillis)} ~ ${formatDay(range.endMillis)}"
+                },
+                style = MaterialTheme.typography.labelMedium,
+                color = if (range == null) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onPrimary
+                },
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            )
+        }
+
+        if (range != null) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = "清除",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clickable(onClick = onClear),
+            )
+        }
+    }
+}
+
+/** 把毫秒时间戳按设备时区格式化成 `2026-09-01`。 */
+private fun formatDay(millis: Long): String =
+    java.time.Instant.ofEpochMilli(millis)
+        .atZone(java.time.ZoneId.systemDefault())
+        .toLocalDate()
+        .toString()
 
 /**
  * 回收站提示条。
@@ -450,12 +556,47 @@ private fun SelectableChip(
 @Composable
 private fun MediaGrid(
     items: List<MediaItem>,
+    columns: Int,
     onLoadThumbnail: suspend (String) -> Bitmap?,
     onOpenViewer: (Int) -> Unit,
+    onZoomColumns: (Int) -> Unit,
 ) {
+    // 缩放累积量：手指张开到一定幅度才换一档，避免轻微抖动就来回调档
+    var accumulated by remember { mutableFloatStateOf(1f) }
+
     LazyVerticalGrid(
-        columns = GridCells.Fixed(3),
-        modifier = Modifier.fillMaxSize(),
+        columns = GridCells.Fixed(columns),
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                // 手写双指缩放而不是用 detectTransformGestures：
+                // 后者把单指拖拽也当作平移处理并消费掉，会把列表滚动一起吃掉。
+                // 这里只在真的检测到缩放（zoom != 1）时才消费事件，
+                // 单指上下滚动完全不受影响。
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        val event = awaitPointerEvent()
+                        val zoom = event.calculateZoom()
+                        if (zoom != 1f) {
+                            accumulated *= zoom
+                            when {
+                                // 手指张开 → 放大 → 列数减少、格子变大
+                                accumulated >= ZOOM_OUT_STEP -> {
+                                    onZoomColumns(-1)
+                                    accumulated = 1f
+                                }
+                                // 手指捏合 → 缩小 → 列数增加
+                                accumulated <= ZOOM_IN_STEP -> {
+                                    onZoomColumns(1)
+                                    accumulated = 1f
+                                }
+                            }
+                            event.changes.forEach { it.consume() }
+                        }
+                    } while (event.changes.any { it.pressed })
+                }
+            },
         contentPadding = PaddingValues(2.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -589,15 +730,21 @@ private fun PermissionPrompt(onRequestPermission: () -> Unit) {
     }
 }
 
+/**
+ * 空状态。
+ *
+ * 要区分「图库本来就空」与「日期筛选没筛出东西」—— 后者说明的是筛选条件，
+ * 不是图库状态，混为一谈会让用户以为照片没了。
+ */
 @Composable
-private fun EmptyState(kind: MediaKind) {
+private fun EmptyState(kind: MediaKind, dateFiltered: Boolean) {
     val noun = if (kind == MediaKind.IMAGE) "图片" else "视频"
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "本机没有找到$noun",
+            text = if (dateFiltered) "该日期范围内没有$noun" else "本机没有找到$noun",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

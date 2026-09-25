@@ -106,9 +106,10 @@ fun SwipeableCard(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
+                    // 只做垂直位移，不加旋转。
+                    // 旋转会让卡片看起来沿弧线甩出去（像扇子展开），
+                    // 而删除 / 保留这个动作是「直上直下」的，弧线反而误导方向感。
                     translationY = offsetY
-                    // 轻微旋转让拖拽有物理感，幅度随位移增长
-                    rotationZ = (offsetY / screenHeightPx) * 6f
                 },
         ) {
             content()

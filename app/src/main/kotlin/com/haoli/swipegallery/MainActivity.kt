@@ -149,7 +149,7 @@ private fun SwipeGalleryHost() {
         Destination.SETTINGS -> SettingsRoute(
             onBack = {
                 // 设置里可能改了默认排序，回到网格时按新设置重新查询
-                galleryViewModel.applyDefaultSort()
+                galleryViewModel.syncSettings()
                 destinationName = Destination.GALLERY.name
             },
             onOpenStats = { destinationName = Destination.STATS.name },

@@ -5,7 +5,6 @@ enum class SortField(val label: String) {
     DATE_TAKEN("拍摄时间"),
     DATE_MODIFIED("修改时间"),
     SIZE("文件大小"),
-    DISPLAY_NAME("文件名"),
     DURATION("视频时长"),
 }
 
@@ -13,6 +12,19 @@ enum class SortDirection(val label: String) {
     ASC("升序"),
     DESC("降序"),
 }
+
+/**
+ * 日期范围筛选。
+ *
+ * 两端都按**整天**理解：用户选 9/1 到 9/3，期望的是这三整天，
+ * 而不是「9/1 零点到 9/3 零点」（那样 9/3 一整天会被漏掉）。
+ * 因此调用方传入的 [startMillis] 应是当天 00:00:00.000，
+ * [endMillis] 应是当天 23:59:59.999。
+ */
+data class DateRange(
+    val startMillis: Long,
+    val endMillis: Long,
+)
 
 data class SortSpec(
     val field: SortField = SortField.DATE_TAKEN,

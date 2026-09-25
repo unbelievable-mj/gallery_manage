@@ -27,6 +27,10 @@ data class GalleryUiState(
     val sort: SortSpec = SortSpec(),
     /** null 表示「全部」，不做相册过滤。 */
     val albumId: Long? = null,
+    /** 日期范围筛选。null 表示不限日期。 */
+    val dateRange: DateRange? = null,
+    /** 网格每行几列。由首屏双指缩放控制。 */
+    val columns: Int = AppSettings.DEFAULT_GRID_COLUMNS,
     /**
      * 回收站里的项数与占用。
      *
@@ -62,24 +66,32 @@ class GalleryViewModel @Inject constructor(
     private var reloadJob: Job? = null
 
     init {
-        // 只把默认排序读进来，不在这里发起查询 ——
+        // 只把默认设置读进来，不在这里发起查询 ——
         // 真正的首次加载由权限回调触发，没权限时查了也是空的
         viewModelScope.launch {
             val defaults = settingsRepository.settings.first()
-            _state.update { it.copy(sort = defaults.defaultSort) }
+            _state.update {
+                it.copy(sort = defaults.defaultSort, columns = defaults.gridColumns)
+            }
         }
     }
 
     /**
-     * 按设置里的默认排序重新查询。
+     * 把设置里的默认值同步到网格并重新查询。
      *
-     * 用户从设置页返回时必须调用：改了默认排序后，只有这里会把它同步到网格。
+     * 用户从设置页返回时必须调用：改了默认排序后，只有这里会把它同步过来。
+     * 网格列数也在这里同步 —— 它在设置页里同样可以改。
      */
-    fun applyDefaultSort() {
+    fun syncSettings() {
         viewModelScope.launch {
             val defaults = settingsRepository.settings.first()
-            if (_state.value.sort != defaults.defaultSort) {
-                _state.update { it.copy(sort = defaults.defaultSort, loading = true) }
+            val changed = _state.value.sort != defaults.defaultSort
+            _state.update {
+                it.copy(
+                    sort = defaults.defaultSort,
+                    columns = defaults.gridColumns,
+                    loading = it.loading || changed,
+                )
             }
             reload()
         }
@@ -97,6 +109,34 @@ class GalleryViewModel @Inject constructor(
         reload()
     }
 
+
+    /**
+     * 双指缩放调整网格列数。
+     *
+     * [delta] 为正表示放大（手指张开）→ 列数减少、格子变大。
+     * 只改界面密度，不触发重新查询 —— 数据没变，重新查库纯属浪费。
+     */
+    fun zoomColumns(delta: Int) {
+        if (delta == 0) return
+        val current = _state.value.columns
+        val next = AppSettings.sanitizeGridColumns(current + delta)
+        if (next == current) return
+
+        _state.update { it.copy(columns = next) }
+        viewModelScope.launch { settingsRepository.setGridColumns(next) }
+    }
+
+    /**
+     * 设置日期范围。传 null 表示不限日期。
+     *
+     * 与其他筛选项一样，改完要重新查询 —— 这里会取消上一次未完成的查询，
+     * 快速连点时不会出现旧结果覆盖新结果。
+     */
+    fun setDateRange(range: DateRange?) {
+        if (_state.value.dateRange == range) return
+        _state.update { it.copy(dateRange = range, loading = true) }
+        reload()
+    }
 
     /** [albumId] 传 null 表示回到「全部」。 */
     fun selectAlbum(albumId: Long?) {
@@ -136,7 +176,7 @@ class GalleryViewModel @Inject constructor(
         reloadJob = viewModelScope.launch {
             val current = _state.value
             val items = repository
-                .observeItems(current.kind, current.sort, current.albumId)
+                .observeItems(current.kind, current.sort, current.albumId, current.dateRange)
                 .first()
             val albums = repository.observeAlbums(current.kind).first()
             val snapshot = repository.observeSnapshot().first()

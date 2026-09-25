@@ -9,6 +9,7 @@ import android.provider.MediaStore
 import com.haoli.swipegallery.core.model.LibrarySnapshot
 import com.haoli.swipegallery.core.model.MediaAlbum
 import com.haoli.swipegallery.core.model.MediaItem
+import com.haoli.swipegallery.core.model.DateRange
 import com.haoli.swipegallery.core.model.MediaKind
 import com.haoli.swipegallery.core.model.SortDirection
 import com.haoli.swipegallery.core.model.SortField
@@ -37,8 +38,9 @@ class MediaStoreDataSource @Inject constructor(
         kind: MediaKind,
         spec: SortSpec,
         albumId: Long? = null,
+        dateRange: DateRange? = null,
     ): List<MediaItem> {
-        val (selection, args) = buildSelection(kind, albumId)
+        val (selection, args) = buildSelection(kind, albumId, dateRange)
         val result = ArrayList<MediaItem>(256)
 
         resolver.query(
@@ -300,7 +302,6 @@ class MediaStoreDataSource @Inject constructor(
             SortField.DATE_TAKEN -> dateTakenColumn(kind)
             SortField.DATE_MODIFIED -> MediaStore.MediaColumns.DATE_MODIFIED
             SortField.SIZE -> MediaStore.MediaColumns.SIZE
-            SortField.DISPLAY_NAME -> MediaStore.MediaColumns.DISPLAY_NAME
             SortField.DURATION -> MediaStore.Video.Media.DURATION
         }
 
@@ -324,6 +325,7 @@ class MediaStoreDataSource @Inject constructor(
     private fun buildSelection(
         kind: MediaKind,
         albumId: Long?,
+        dateRange: DateRange?,
     ): Pair<String, Array<String>?> {
         val clauses = mutableListOf(ACTIVE_SELECTION)
         val args = mutableListOf<String>()
@@ -331,6 +333,17 @@ class MediaStoreDataSource @Inject constructor(
         if (albumId != null) {
             clauses += "${bucketIdColumn(kind)} = ?"
             args += albumId.toString()
+        }
+
+        if (dateRange != null) {
+            // 与 MediaItem.effectiveDateMillis 的口径保持一致：
+            // DATE_TAKEN 缺失或为 0 时回退到 DATE_ADDED。
+            // 两者单位不同（DATE_TAKEN 是毫秒，DATE_ADDED 是秒），所以要乘 1000 对齐，
+            // 否则回退分支会比实际早 1000 倍，筛选结果完全错位。
+            clauses += "COALESCE(NULLIF(${dateTakenColumn(kind)}, 0), " +
+                "${MediaStore.MediaColumns.DATE_ADDED} * 1000) BETWEEN ? AND ?"
+            args += dateRange.startMillis.toString()
+            args += dateRange.endMillis.toString()
         }
 
         return clauses.joinToString(" AND ") to args.takeIf { it.isNotEmpty() }?.toTypedArray()

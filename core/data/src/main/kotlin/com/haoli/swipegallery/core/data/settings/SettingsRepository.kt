@@ -35,6 +35,7 @@ interface SettingsRepository {
     suspend fun setDuplicateThreshold(bytes: Long)
     suspend fun setThemeMode(mode: ThemeMode)
     suspend fun setDisclaimerAccepted(accepted: Boolean)
+    suspend fun setGridColumns(columns: Int)
 }
 
 /** 必须声明为 Context 的顶层扩展，DataStore 要求同一文件只创建一次实例。 */
@@ -63,6 +64,9 @@ class DataStoreSettingsRepository @Inject constructor(
             themeMode = prefs[Keys.THEME_MODE].toEnumOrNull<ThemeMode>()
                 ?: ThemeMode.SYSTEM,
             disclaimerAccepted = prefs[Keys.DISCLAIMER_ACCEPTED] ?: false,
+            gridColumns = prefs[Keys.GRID_COLUMNS]
+                ?.let(AppSettings::sanitizeGridColumns)
+                ?: AppSettings.DEFAULT_GRID_COLUMNS,
         )
     }
 
@@ -122,6 +126,11 @@ class DataStoreSettingsRepository @Inject constructor(
         context.settingsDataStore.edit { it[Keys.DISCLAIMER_ACCEPTED] = accepted }
     }
 
+    override suspend fun setGridColumns(columns: Int) {
+        val safe = AppSettings.sanitizeGridColumns(columns)
+        context.settingsDataStore.edit { it[Keys.GRID_COLUMNS] = safe }
+    }
+
     /**
      * 枚举名解析失败时返回 null 而不是抛异常。
      *
@@ -141,5 +150,6 @@ class DataStoreSettingsRepository @Inject constructor(
         val DUPLICATE_THRESHOLD = longPreferencesKey("duplicate_threshold")
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val DISCLAIMER_ACCEPTED = booleanPreferencesKey("disclaimer_accepted")
+        val GRID_COLUMNS = intPreferencesKey("grid_columns")
     }
 }

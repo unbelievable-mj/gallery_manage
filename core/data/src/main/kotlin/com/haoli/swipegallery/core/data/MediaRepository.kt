@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import com.haoli.swipegallery.core.model.LibrarySnapshot
 import com.haoli.swipegallery.core.model.MediaAlbum
 import com.haoli.swipegallery.core.model.MediaItem
+import com.haoli.swipegallery.core.model.DateRange
 import com.haoli.swipegallery.core.model.MediaKind
 import com.haoli.swipegallery.core.model.SortSpec
 import com.haoli.swipegallery.core.model.StorageStats
@@ -25,12 +26,14 @@ interface MediaRepository {
     /**
      * 按类型与排序规则取媒体列表。滑卡队列由它生成。
      * [albumId] 非空时只返回该相册内的媒体。
+     * [dateRange] 非空时只返回该日期区间内的媒体（按整天理解）。
      * 回收站里的内容不会出现在结果中（查询带 IS_TRASHED 过滤）。
      */
     fun observeItems(
         kind: MediaKind,
         sort: SortSpec,
         albumId: Long? = null,
+        dateRange: DateRange? = null,
     ): Flow<List<MediaItem>>
 
     /** 该类型下的全部相册，按数量倒序。 */
