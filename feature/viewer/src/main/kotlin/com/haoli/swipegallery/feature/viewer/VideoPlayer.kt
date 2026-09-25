@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,6 +44,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.exoplayer.ExoPlayer
 import com.haoli.swipegallery.core.common.formatDuration
 import kotlin.math.roundToInt
@@ -78,6 +81,12 @@ fun VideoPlayer(
     var scrubbing by remember { mutableStateOf(false) }
     var scrubMs by remember { mutableLongStateOf(0L) }
 
+    // 视频的真实宽高比。0 表示还不知道，此时退回铺满。
+    //
+    // 这个值必须取到：TextureView 与 SurfaceView 不同，它**没有内建的比例处理**，
+    // 会把画面拉伸到视图自身的尺寸。视图若是铺满整屏，横屏视频就会被拉成竖屏。
+    var videoAspect by remember { mutableFloatStateOf(0f) }
+
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
@@ -88,6 +97,12 @@ fun VideoPlayer(
                 failed = true
             }
 
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                if (videoSize.width > 0 && videoSize.height > 0) {
+                    videoAspect = videoSize.width.toFloat() / videoSize.height.toFloat()
+                }
+            }
+
             override fun onPlaybackStateChanged(playbackState: Int) {
                 // 时长要等播放器进入 READY 才可靠，否则会拿到 TIME_UNSET
                 if (playbackState == Player.STATE_READY) {
@@ -96,6 +111,13 @@ fun VideoPlayer(
             }
         }
         exoPlayer.addListener(listener)
+
+        // 注册监听器之前播放器可能已经拿到尺寸了，补读一次
+        exoPlayer.videoSize.let { known ->
+            if (known.width > 0 && known.height > 0) {
+                videoAspect = known.width.toFloat() / known.height.toFloat()
+            }
+        }
 
         onDispose {
             exoPlayer.removeListener(listener)
@@ -123,9 +145,16 @@ fun VideoPlayer(
         }
     }
 
-    Box(modifier = modifier) {
+    // 居中：视频按原始比例缩放后，四周留黑边（与正常播放器一致），
+    // 而不是拉伸铺满
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
         AndroidView(
-            modifier = Modifier.fillMaxSize(),
+            modifier = if (videoAspect > 0f) {
+                Modifier.aspectRatio(videoAspect)
+            } else {
+                // 尺寸未知时先铺满，拿到尺寸后会自动收敛到正确比例
+                Modifier.fillMaxSize()
+            },
             factory = { ctx ->
                 TextureView(ctx).apply {
                     // 兜底：即使没有上层的 Compose 手势层，也不让视频表面吞事件
