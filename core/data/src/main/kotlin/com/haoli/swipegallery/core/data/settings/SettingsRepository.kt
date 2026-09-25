@@ -3,6 +3,7 @@ package com.haoli.swipegallery.core.data.settings
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
@@ -33,6 +34,7 @@ interface SettingsRepository {
     suspend fun setDefaultSort(field: SortField, direction: SortDirection)
     suspend fun setDuplicateThreshold(bytes: Long)
     suspend fun setThemeMode(mode: ThemeMode)
+    suspend fun setDisclaimerAccepted(accepted: Boolean)
 }
 
 /** 必须声明为 Context 的顶层扩展，DataStore 要求同一文件只创建一次实例。 */
@@ -60,6 +62,7 @@ class DataStoreSettingsRepository @Inject constructor(
                 ?: AppSettings.DEFAULT_DUPLICATE_THRESHOLD_BYTES,
             themeMode = prefs[Keys.THEME_MODE].toEnumOrNull<ThemeMode>()
                 ?: ThemeMode.SYSTEM,
+            disclaimerAccepted = prefs[Keys.DISCLAIMER_ACCEPTED] ?: false,
         )
     }
 
@@ -115,6 +118,10 @@ class DataStoreSettingsRepository @Inject constructor(
         context.settingsDataStore.edit { it[Keys.THEME_MODE] = mode.name }
     }
 
+    override suspend fun setDisclaimerAccepted(accepted: Boolean) {
+        context.settingsDataStore.edit { it[Keys.DISCLAIMER_ACCEPTED] = accepted }
+    }
+
     /**
      * 枚举名解析失败时返回 null 而不是抛异常。
      *
@@ -133,5 +140,6 @@ class DataStoreSettingsRepository @Inject constructor(
         val SORT_DIRECTION = stringPreferencesKey("sort_direction")
         val DUPLICATE_THRESHOLD = longPreferencesKey("duplicate_threshold")
         val THEME_MODE = stringPreferencesKey("theme_mode")
+        val DISCLAIMER_ACCEPTED = booleanPreferencesKey("disclaimer_accepted")
     }
 }

@@ -61,6 +61,13 @@ data class AppSettings(
 
     /** 主题模式。 */
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
+
+    /**
+     * 是否已确认过首次启动的免责声明。
+     *
+     * 只在首次启动时弹一次；确认后不再打扰。
+     */
+    val disclaimerAccepted: Boolean = false,
 ) {
     val defaultSort: SortSpec
         get() = SortSpec(field = defaultSortField, direction = defaultSortDirection)
@@ -84,6 +91,8 @@ data class AppSettings(
          * 体积差通常在几百字节到几 KB，20KB 以上基本只能匹配到连拍。
          */
         val DUPLICATE_THRESHOLD_OPTIONS = listOf(
+            // 0 表示「体积必须完全相同」——最严的一档，不会误判连拍
+            0L to "完全相同",
             100L to "0.1 KB",
             1L * 1024L to "1 KB",
             5L * 1024L to "5 KB",

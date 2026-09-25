@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /**
  * 应用级状态。目前只有主题模式。
@@ -19,7 +20,7 @@ import kotlinx.coroutines.flow.stateIn
  */
 @HiltViewModel
 class AppViewModel @Inject constructor(
-    settingsRepository: SettingsRepository,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
     val themeMode: StateFlow<ThemeMode> = settingsRepository.settings
@@ -27,4 +28,18 @@ class AppViewModel @Inject constructor(
         // Eagerly 而不是 WhileSubscribed：主题必须在首帧就定下来，
         // 否则会先按浅色画一帧再切成深色，肉眼能看到闪一下
         .stateIn(viewModelScope, SharingStarted.Eagerly, ThemeMode.SYSTEM)
+
+    /**
+     * 是否已确认免责声明。
+     *
+     * 初始值给 true（即「先不弹」），等读到真实设置再决定 ——
+     * 反过来的话每次冷启动都会先闪一下弹窗。
+     */
+    val disclaimerAccepted: StateFlow<Boolean> = settingsRepository.settings
+        .map { it.disclaimerAccepted }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    fun acceptDisclaimer() {
+        viewModelScope.launch { settingsRepository.setDisclaimerAccepted(true) }
+    }
 }

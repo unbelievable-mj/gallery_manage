@@ -127,6 +127,7 @@ fun TrashScreen(
         TrashTopBar(
             count = state.items.size,
             totalBytes = state.totalBytes,
+            totalFreedBytes = state.totalFreedBytes,
             allSelected = state.allSelected,
             hasSelection = state.hasSelection,
             onBack = onBack,
@@ -182,6 +183,7 @@ fun TrashScreen(
 private fun TrashTopBar(
     count: Int,
     totalBytes: Long,
+    totalFreedBytes: Long,
     allSelected: Boolean,
     hasSelection: Boolean,
     onBack: () -> Unit,
@@ -218,6 +220,14 @@ private fun TrashTopBar(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (totalFreedBytes > 0L) {
+                // 累计值：让用户看到「这个工具到底帮我省了多少」
+                Text(
+                    text = "累计已释放 ${formatFileSize(totalFreedBytes)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
         }
 
         if (count > 0) {

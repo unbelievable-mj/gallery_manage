@@ -4,6 +4,8 @@ import com.haoli.swipegallery.core.data.MediaRepository
 import com.haoli.swipegallery.core.data.MediaStoreMediaRepository
 import com.haoli.swipegallery.core.data.settings.DataStoreSettingsRepository
 import com.haoli.swipegallery.core.data.settings.SettingsRepository
+import com.haoli.swipegallery.core.data.usage.DataStoreUsageRepository
+import com.haoli.swipegallery.core.data.usage.UsageRepository
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -25,4 +27,8 @@ abstract class DataModule {
     @Binds
     @Singleton
     abstract fun bindSettingsRepository(impl: DataStoreSettingsRepository): SettingsRepository
+
+    @Binds
+    @Singleton
+    abstract fun bindUsageRepository(impl: DataStoreUsageRepository): UsageRepository
 }

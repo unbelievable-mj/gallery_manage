@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.haoli.swipegallery.core.data.MediaRepository
+import com.haoli.swipegallery.core.data.usage.UsageRepository
 import com.haoli.swipegallery.core.model.MediaItem
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -20,6 +21,8 @@ data class TrashUiState(
     val items: List<MediaItem> = emptyList(),
     val selectedIds: Set<Long> = emptySet(),
     val loading: Boolean = true,
+    /** 历史累计：通过永久删除释放掉的空间。只增不减。 */
+    val totalFreedBytes: Long = 0L,
 ) {
     val hasSelection: Boolean get() = selectedIds.isNotEmpty()
     val allSelected: Boolean get() = items.isNotEmpty() && selectedIds.size == items.size
@@ -48,13 +51,22 @@ data class TrashUiState(
 @HiltViewModel
 class TrashViewModel @Inject constructor(
     private val repository: MediaRepository,
+    private val usageRepository: UsageRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(TrashUiState())
     val state: StateFlow<TrashUiState> = _state.asStateFlow()
 
+    /** 本次待删内容的体积，等用户确认后累加到「累计释放」。 */
+    private var pendingPurgeBytes: Long = 0L
+
     init {
         reload()
+        viewModelScope.launch {
+            usageRepository.freedBytes.collect { total ->
+                _state.update { it.copy(totalFreedBytes = total) }
+            }
+        }
     }
 
     /**
@@ -109,8 +121,13 @@ class TrashViewModel @Inject constructor(
         repository.untrashRequest(selectedUris() ?: return null)
 
     /** 永久删除。**这是全应用唯一会真正释放空间的操作。** */
-    fun purgeSelected(): IntentSender? =
-        repository.purgeRequest(selectedUris() ?: return null)
+    fun purgeSelected(): IntentSender? {
+        val uris = selectedUris() ?: return null
+        // 先记下这次能释放多少，等系统对话框确认后再累加 ——
+        // 用户取消的话不能算进「累计释放」
+        pendingPurgeBytes = _state.value.selectedBytes
+        return repository.purgeRequest(uris)
+    }
 
     /**
      * 系统对话框返回后调用。
@@ -125,6 +142,8 @@ class TrashViewModel @Inject constructor(
      */
     fun onActionFinished(removed: Boolean) {
         val selected = _state.value.selectedIds
+        val freedNow = if (removed) pendingPurgeBytes else 0L
+        pendingPurgeBytes = 0L
 
         _state.update { snapshot ->
             snapshot.copy(
@@ -135,6 +154,10 @@ class TrashViewModel @Inject constructor(
                 },
                 selectedIds = emptySet(),
             )
+        }
+
+        if (freedNow > 0L) {
+            viewModelScope.launch { usageRepository.addFreed(freedNow) }
         }
 
         viewModelScope.launch {

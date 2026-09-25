@@ -45,6 +45,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val appViewModel: AppViewModel = viewModel()
             val themeMode by appViewModel.themeMode.collectAsStateWithLifecycle()
+            val disclaimerAccepted by appViewModel.disclaimerAccepted.collectAsStateWithLifecycle()
 
             SwipeGalleryTheme(
                 darkTheme = when (themeMode) {
@@ -55,6 +56,11 @@ class MainActivity : ComponentActivity() {
                 },
             ) {
                 SwipeGalleryHost()
+
+                // 首次启动弹一次免责声明。确认后不再打扰。
+                if (!disclaimerAccepted) {
+                    DisclaimerDialog(onAccept = appViewModel::acceptDisclaimer)
+                }
             }
         }
     }
