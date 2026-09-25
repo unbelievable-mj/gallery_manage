@@ -154,6 +154,28 @@ jobs:
           tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', steps.version.outputs.name) }}
           prerelease: ${{ steps.version.outputs.prerelease }}
           generate_release_notes: true
+          # 国内下载说明。指定 body 时，action 会把它**前置**到自动生成的
+          # 更新日志之前，位置最显眼，所以不需要 append_body。
+          body: |
+            ## 国内下载
+
+            GitHub 在国内常常无法直接访问。把下面任一加速前缀**拼在 APK 直链前面**即可：
+
+            | 加速前缀 | 拼出来的地址 |
+            | --- | --- |
+            | `https://gh-proxy.com/` | `https://gh-proxy.com/https://github.com/...` |
+            | `https://ghproxy.net/` | `https://ghproxy.net/https://github.com/...` |
+            | `https://ghfast.top/` | `https://ghfast.top/https://github.com/...` |
+
+            本次 APK 的加速直链：
+
+            ```
+            https://gh-proxy.com/https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/SwipeGallery-${{ github.ref_name }}.apk
+            ```
+
+            > 这些都是第三方公共服务，随时可能失效或变更。
+            > **安装前请核对 SHA256**（见本页的 `SHA256SUMS.txt`）——
+            > 经第三方服务器中转的文件，理论上存在被篡改的可能。
           files: dist/*
 
       # 与 ci.yml 同样的机制：Actions 日志未认证无法下载（需管理员权限），

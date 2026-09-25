@@ -14,6 +14,27 @@ https://github.com/unbelievable-mj/gallery_manage/releases/latest
 
 首次安装需要在系统设置里允许「安装未知来源应用」。新版本可直接覆盖安装，不会丢数据。
 
+### 国内下载
+
+GitHub 在国内常常无法直接访问。把下面任一加速前缀**拼在 APK 直链前面**即可：
+
+| 加速前缀 | 拼出来的地址 |
+| --- | --- |
+| `https://gh-proxy.com/` | `https://gh-proxy.com/https://github.com/...` |
+| `https://ghproxy.net/` | `https://ghproxy.net/https://github.com/...` |
+| `https://ghfast.top/` | `https://ghfast.top/https://github.com/...` |
+
+用法就是把前缀拼在任意 GitHub 直链前面。以某个版本的 APK 为例
+（把 `v0.17.0` 换成你要的版本）：
+
+```
+https://gh-proxy.com/https://github.com/unbelievable-mj/gallery_manage/releases/download/v0.17.0/SwipeGallery-v0.17.0.apk
+```
+
+> 这三个前缀是 2026-09 实测可用的第三方公共服务，**随时可能失效或变更**。
+> 经第三方服务器中转的文件理论上存在被篡改的可能，
+> **安装前请核对 SHA256**（每个发布页都附有 `SHA256SUMS.txt`）。
+
 ---
 
 ## 功能
