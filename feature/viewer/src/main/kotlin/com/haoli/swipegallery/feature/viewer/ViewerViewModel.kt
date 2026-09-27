@@ -104,6 +104,16 @@ class ViewerViewModel @Inject constructor(
     private var preloadCount: Int = AppSettings.DEFAULT_PRELOAD_COUNT
 
     /**
+     * 当前正在播放的动态照片视频路径。null 表示显示静态图。
+     *
+     * 抽出一次就缓存住（[motionCache]），同一张反复长按不会重复读文件。
+     */
+    private val _motionVideo = MutableStateFlow<String?>(null)
+    val motionVideo: StateFlow<String?> = _motionVideo.asStateFlow()
+
+    private val motionCache = mutableMapOf<String, String?>()
+
+    /**
      * 上滑删除的视觉反馈。
      *
      * 用 StateFlow 而不是普通字段：它只影响界面绘制，不参与逻辑判断，
@@ -134,6 +144,43 @@ class ViewerViewModel @Inject constructor(
                 _state.update { it.copy(moveTargetName = loaded.moveTarget?.albumName) }
             }
         }
+    }
+
+    /**
+     * 按住时尝试播放动态照片。
+     *
+     * 解析要读文件尾部并写缓存，不能放在主线程；但也不必让界面等它 ——
+     * 解析完成后 [motionVideo] 会变成非空，界面自动切到视频。
+     * 不是动态照片时保持静态图，用户只会看到「按了没反应」，与预期一致。
+     */
+    fun startMotionPlayback(uri: String) {
+        viewModelScope.launch {
+            val path = motionCache.getOrPut(uri) {
+                repository.extractMotionVideo(uri)
+            }
+            // 用户可能已经松手了，这时不要再把视频推上去
+            if (pressedUri == uri) {
+                _motionVideo.value = path
+            }
+        }
+    }
+
+    /** 松手：回到静态图。 */
+    fun stopMotionPlayback() {
+        _motionVideo.value = null
+    }
+
+    /** 当前按住的图片，用于判断异步解析回来时手指是否还在。 */
+    private var pressedUri: String? = null
+
+    fun onMotionPressed(uri: String) {
+        pressedUri = uri
+        startMotionPlayback(uri)
+    }
+
+    fun onMotionReleased() {
+        pressedUri = null
+        stopMotionPlayback()
     }
 
     /** 打开查看器时注入队列与起始位置。 */

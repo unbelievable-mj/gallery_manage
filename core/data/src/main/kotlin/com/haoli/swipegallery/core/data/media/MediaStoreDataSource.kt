@@ -107,13 +107,14 @@ class MediaStoreDataSource @Inject constructor(
 
         while (cursor.moveToNext()) {
             val id = if (idIdx >= 0) cursor.getLong(idIdx) else continue
+            val name = if (nameIdx >= 0) cursor.getString(nameIdx).orEmpty() else ""
             val dateAddedSeconds = if (addedIdx >= 0) cursor.getLong(addedIdx) else 0L
             val dateTakenSeconds = if (takenIdx >= 0) cursor.getLong(takenIdx) else 0L
 
             into += MediaItem(
                 id = id,
                 uri = ContentUris.withAppendedId(collectionFor(kind), id).toString(),
-                displayName = if (nameIdx >= 0) cursor.getString(nameIdx).orEmpty() else "",
+                displayName = name,
                 kind = kind,
                 // 夹到非负：格式化函数对负数会抛异常，而 MediaStore 在某些异常状态下
                 // 确实可能返回负值，不该让展示层为此崩溃
@@ -131,6 +132,7 @@ class MediaStoreDataSource @Inject constructor(
                 albumId = if (bucketIdIdx >= 0) cursor.getLong(bucketIdIdx) else 0L,
                 albumName = if (bucketNameIdx >= 0) cursor.getString(bucketNameIdx).orEmpty() else "",
                 relativePath = if (relativePathIdx >= 0) cursor.getString(relativePathIdx) else null,
+                isMotionPhoto = name.endsWith("MP", ignoreCase = true),
             )
         }
     }

@@ -77,6 +77,14 @@ interface MediaRepository {
     fun observeTrash(): Flow<List<MediaItem>>
 
     /**
+     * 取出动态照片内嵌的视频，返回本地缓存文件路径。
+     *
+     * 不是动态照片、或解析失败时返回 null —— 失败是正常路径，
+     * 绝大多数图片都不是动态照片。
+     */
+    suspend fun extractMotionVideo(uri: String): String?
+
+    /**
      * 构造「移入回收站」请求。滑卡会话结束时整批调用一次。
      *
      * 用系统回收站而不是永久删除，是为了让内容在手机相册里也能找到并取回。

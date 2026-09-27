@@ -28,6 +28,18 @@ data class MediaItem(
     val albumId: Long,
     val albumName: String,
     val relativePath: String?,
+    /**
+     * 是否是动态照片（Live / Motion Photo）。
+     *
+     * 网格里靠**文件名后缀**判断（官方规范自己给的就是这个启发式：
+     * 文件名以 MP 结尾）。这是唯一免费可得的信号 ——
+     * 真正权威的依据在文件内部（XMP + 末尾追加的 MP4），
+     * 但为网格里每一张都去开文件读头，代价无法接受。
+     *
+     * 所以这里是「可能」，不是「一定」。查看器里长按时会做一次真实解析，
+     * 以那次结果为准。
+     */
+    val isMotionPhoto: Boolean = false,
 ) {
     /** 排序与信息栏展示统一用这个，屏蔽 DATE_TAKEN 缺失的差异。 */
     val effectiveDateMillis: Long

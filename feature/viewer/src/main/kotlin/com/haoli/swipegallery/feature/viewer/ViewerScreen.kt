@@ -56,6 +56,8 @@ import com.haoli.swipegallery.core.model.MediaKind
 import com.haoli.swipegallery.core.model.TriageProgress
 import com.haoli.swipegallery.core.model.SwipeEffect
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 
 /**
  * 查看器入口。
@@ -77,6 +79,7 @@ fun ViewerRoute(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val swipeEffect by viewModel.swipeEffect.collectAsStateWithLifecycle()
+    val motionVideo by viewModel.motionVideo.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var closing by remember { mutableStateOf(false) }
 
@@ -148,6 +151,9 @@ fun ViewerRoute(
         onLoadFullImage = viewModel::loadFullImage,
         onPageChanged = viewModel::onPageChanged,
         swipeEffect = swipeEffect,
+        motionVideoPath = motionVideo,
+        onMotionPressed = viewModel::onMotionPressed,
+        onMotionReleased = viewModel::onMotionReleased,
         modifier = modifier,
     )
 }
@@ -191,6 +197,9 @@ fun ViewerScreen(
     // 刻意不给默认值：有默认值时漏传不会报错，
     // 会静默走 NONE，表现为「设置里改了但毫无效果」—— 这个坑真踩过。
     swipeEffect: SwipeEffect,
+    motionVideoPath: String?,
+    onMotionPressed: (String) -> Unit,
+    onMotionReleased: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // 黑色底铺满整屏（含系统栏区域），内容让出系统栏。
@@ -227,6 +236,9 @@ fun ViewerScreen(
                         onLoadFullImage = onLoadFullImage,
                         onPageChanged = onPageChanged,
                         swipeEffect = swipeEffect,
+                        motionVideoPath = motionVideoPath,
+                        onMotionPressed = onMotionPressed,
+                        onMotionReleased = onMotionReleased,
                     )
                 }
             }
@@ -246,6 +258,9 @@ private fun TriagePager(
     onLoadFullImage: suspend (String) -> Bitmap?,
     onPageChanged: (Int) -> Unit,
     swipeEffect: SwipeEffect,
+    motionVideoPath: String?,
+    onMotionPressed: (String) -> Unit,
+    onMotionReleased: () -> Unit,
 ) {
     // initialPage 必须取队列里的起始位置。
     // 不传的话 Pager 永远从第 0 页开始 —— 用户点第 50 张进去，也会从第一张开始处理，
@@ -296,6 +311,9 @@ private fun ViewerPage(
     item: MediaItem,
     isCurrent: Boolean,
     onLoadFullImage: suspend (String) -> Bitmap?,
+    motionVideoPath: String?,
+    onMotionPressed: (String) -> Unit,
+    onMotionReleased: () -> Unit,
 ) {
     when (item.kind) {
         MediaKind.VIDEO -> VideoPlayer(
@@ -304,7 +322,13 @@ private fun ViewerPage(
             modifier = Modifier.fillMaxSize(),
         )
 
-        MediaKind.IMAGE -> ImagePage(item = item, onLoadFullImage = onLoadFullImage)
+        MediaKind.IMAGE -> ImagePage(
+            item = item,
+            onLoadFullImage = onLoadFullImage,
+            motionVideoPath = motionVideoPath,
+            onMotionPressed = onMotionPressed,
+            onMotionReleased = onMotionReleased,
+        )
     }
 }
 
@@ -312,6 +336,9 @@ private fun ViewerPage(
 private fun ImagePage(
     item: MediaItem,
     onLoadFullImage: suspend (String) -> Bitmap?,
+    motionVideoPath: String?,
+    onMotionPressed: (String) -> Unit,
+    onMotionReleased: () -> Unit,
 ) {
     var bitmap by remember(item.uri) { mutableStateOf<Bitmap?>(null) }
 
@@ -320,19 +347,43 @@ private fun ImagePage(
     }
 
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            // 按住播放动态照片，松手回到静帧 —— 与手机相册一致。
+            //
+            // 用 detectTapGestures 而不是 clickable：这里要的是「按住」这个
+            // 持续状态，clickable 只给得到一次性的点击回调。
+            // onPress 里不消费事件，所以外层的上下滑（删除 / 保留）不受影响。
+            .pointerInput(item.uri) {
+                detectTapGestures(
+                    onPress = {
+                        onMotionPressed(item.uri)
+                        tryAwaitRelease()
+                        onMotionReleased()
+                    },
+                )
+            },
         contentAlignment = Alignment.Center,
     ) {
-        val loaded = bitmap
-        if (loaded != null) {
-            Image(
-                bitmap = loaded.asImageBitmap(),
-                contentDescription = item.displayName,
+        if (motionVideoPath != null) {
+            // 正在播放内嵌视频。这里用 file:// 前缀，ExoPlayer 需要合法的 URI。
+            VideoPlayer(
+                uri = "file://$motionVideoPath",
+                active = true,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit,
             )
         } else {
-            CircularProgressIndicator(color = Color.White)
+            val loaded = bitmap
+            if (loaded != null) {
+                Image(
+                    bitmap = loaded.asImageBitmap(),
+                    contentDescription = item.displayName,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit,
+                )
+            } else {
+                CircularProgressIndicator(color = Color.White)
+            }
         }
     }
 }

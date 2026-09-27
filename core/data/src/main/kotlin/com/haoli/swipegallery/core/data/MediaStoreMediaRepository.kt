@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
+import com.haoli.swipegallery.core.data.motion.MotionPhotoExtractor
 
 /**
  * 基于 MediaStore 的实现。
@@ -35,6 +36,7 @@ class MediaStoreMediaRepository @Inject constructor(
     private val thumbnailLoader: ThumbnailLoader,
     private val fullImageLoader: FullImageLoader,
     private val mediaOperator: MediaOperator,
+    private val motionPhotoExtractor: MotionPhotoExtractor,
 ) : MediaRepository {
 
     override fun observeSnapshot(): Flow<LibrarySnapshot> = flow {
@@ -92,6 +94,9 @@ class MediaStoreMediaRepository @Inject constructor(
 
     override fun trashRequest(uris: List<String>): IntentSender? =
         mediaOperator.trashRequest(uris)
+
+    override suspend fun extractMotionVideo(uri: String): String? =
+        motionPhotoExtractor.extract(uri)
 
     override suspend fun thumbnail(uri: String, sizePx: Int): Bitmap? =
         thumbnailLoader.load(uri, sizePx)

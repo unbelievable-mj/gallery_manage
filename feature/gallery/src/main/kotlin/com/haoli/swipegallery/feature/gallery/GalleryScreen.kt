@@ -25,11 +25,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.Canvas
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -45,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -60,6 +64,7 @@ import com.haoli.swipegallery.core.model.MediaItem
 import com.haoli.swipegallery.core.model.MediaKind
 import com.haoli.swipegallery.core.model.SortDirection
 import com.haoli.swipegallery.core.model.SortField
+import androidx.compose.ui.graphics.drawscope.Stroke
 
 /**
  * 网格页入口。
@@ -279,6 +284,35 @@ private fun HeaderAction(label: String, onClick: () -> Unit) {
 /** 双指缩放换一档所需的累积幅度。留出余量，避免轻微抖动就跳档。 */
 private const val ZOOM_OUT_STEP = 1.25f
 private const val ZOOM_IN_STEP = 0.8f
+
+/**
+ * 动态照片角标。
+ *
+ * 样式沿用 iOS 那套「实心圆 + 虚线外环」，一眼就能认出来。
+ * 底下垫一层半透明黑，否则在浅色照片上白图标会看不见。
+ */
+@Composable
+private fun MotionPhotoBadge(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(20.dp)
+            .background(Color.Black.copy(alpha = 0.45f), CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(modifier = Modifier.size(12.dp)) {
+            val radius = size.minDimension / 2f
+            drawCircle(
+                color = Color.White.copy(alpha = 0.85f),
+                radius = radius - 0.75.dp.toPx(),
+                style = Stroke(
+                    width = 1.5.dp.toPx(),
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(2f, 2f), 0f),
+                ),
+            )
+            drawCircle(color = Color.White, radius = radius * 0.5f)
+        }
+    }
+}
 
 /**
  * 日期筛选条。
@@ -656,6 +690,15 @@ private fun MediaCell(
                         shape = RoundedCornerShape(4.dp),
                     )
                     .padding(horizontal = 4.dp, vertical = 2.dp),
+            )
+        }
+
+        // 动态照片角标放左下角，与右下角的视频时长各占一边，不会打架
+        if (item.isMotionPhoto) {
+            MotionPhotoBadge(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(4.dp),
             )
         }
     }
