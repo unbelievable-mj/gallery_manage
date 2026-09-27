@@ -147,6 +147,7 @@ fun ViewerRoute(
         onClose = requestClose,
         onLoadFullImage = viewModel::loadFullImage,
         onPageChanged = viewModel::onPageChanged,
+        swipeEffect = swipeEffect,
         modifier = modifier,
     )
 }
@@ -187,7 +188,9 @@ fun ViewerScreen(
     onClose: () -> Unit,
     onLoadFullImage: suspend (String) -> Bitmap?,
     onPageChanged: (Int) -> Unit,
-    swipeEffect: SwipeEffect = SwipeEffect.NONE,
+    // 刻意不给默认值：有默认值时漏传不会报错，
+    // 会静默走 NONE，表现为「设置里改了但毫无效果」—— 这个坑真踩过。
+    swipeEffect: SwipeEffect,
     modifier: Modifier = Modifier,
 ) {
     // 黑色底铺满整屏（含系统栏区域），内容让出系统栏。
