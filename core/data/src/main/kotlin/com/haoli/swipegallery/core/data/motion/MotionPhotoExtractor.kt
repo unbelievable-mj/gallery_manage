@@ -76,7 +76,7 @@ class MotionPhotoExtractor @Inject constructor(
                 DataInputStream(stream).readFully(tail)
             }
 
-            val videoOffsetInTail = findVideoStart(tail) ?: return null
+            val videoOffsetInTail = MotionPhotoScanner.findVideoStart(tail) ?: return null
             val videoStart = tailStart + videoOffsetInTail
             val videoLength = fileSize - videoStart
 
@@ -104,47 +104,6 @@ class MotionPhotoExtractor @Inject constructor(
         }
     }
 
-    /**
-     * 在文件尾部缓冲区里找 MP4 起点，返回相对缓冲区的偏移。
-     *
-     * 从后往前找，取**最后一个**匹配 —— 视频在文件最末尾，
-     * 它的 `ftyp` 也就是最后一次出现。
-     */
-    private fun findVideoStart(tail: ByteArray): Int? {
-        for (i in tail.size - FTYP.size downTo 4) {
-            if (!matchesAt(tail, i, FTYP)) continue
-
-            // 紧邻其前的 4 字节 = 盒长度（大端）
-            val boxSize = readInt(tail, i - 4)
-            if (boxSize < MIN_FTYP_BOX || boxSize > MAX_FTYP_BOX) continue
-
-            // 紧随其后的 4 字节 = brand
-            if (i + FTYP.size + 4 > tail.size) continue
-            val brand = String(tail, i + FTYP.size, 4, Charsets.US_ASCII)
-            if (brand !in KNOWN_BRANDS) continue
-
-            // 命中：视频从盒长度字段开始
-            return i - 4
-        }
-        return null
-    }
-
-    private fun matchesAt(data: ByteArray, offset: Int, needle: ByteArray): Boolean {
-        if (offset < 0 || offset + needle.size > data.size) return false
-        for (k in needle.indices) {
-            if (data[offset + k] != needle[k]) return false
-        }
-        return true
-    }
-
-    private fun readInt(data: ByteArray, offset: Int): Int {
-        if (offset < 0 || offset + 4 > data.size) return -1
-        return ((data[offset].toInt() and 0xFF) shl 24) or
-            ((data[offset + 1].toInt() and 0xFF) shl 16) or
-            ((data[offset + 2].toInt() and 0xFF) shl 8) or
-            (data[offset + 3].toInt() and 0xFF)
-    }
-
     private fun cacheDir(): File =
         File(context.cacheDir, CACHE_DIR_NAME).apply { mkdirs() }
 
@@ -154,24 +113,19 @@ class MotionPhotoExtractor @Inject constructor(
     private companion object {
         const val CACHE_DIR_NAME = "motion_photos"
 
-        /** 只在文件尾部这么多字节里找。视频通常几秒，几 MB 足够覆盖。 */
-        const val MAX_TAIL_BYTES = 8L * 1024 * 1024
+        /**
+         * 只在文件尾部这么多字节里找。
+         *
+         * 动态照片的视频通常只有几秒（1–3MB），16MB 留了足够余量。
+         * 再大就没必要了 —— 缓冲区是实打实分配的内存。
+         */
+        const val MAX_TAIL_BYTES = 16L * 1024 * 1024
 
         const val COPY_BUFFER_BYTES = 64 * 1024
 
         const val MIN_VIDEO_BYTES = 32L * 1024
         const val MAX_VIDEO_BYTES = 64L * 1024 * 1024
 
-        const val MIN_FTYP_BOX = 8
-        const val MAX_FTYP_BOX = 4096
 
-        val FTYP = "ftyp".toByteArray(Charsets.US_ASCII)
-
-        /** 已知的 MP4 brand。多列几个，覆盖不同厂商的输出。 */
-        val KNOWN_BRANDS = setOf(
-            "isom", "iso2", "iso4", "iso5", "iso6",
-            "mp41", "mp42", "avc1", "M4V ", "M4A ",
-            "3gp4", "3gp5", "qt  ", "dash", "msdh",
-        )
     }
 }
