@@ -121,11 +121,6 @@ class MotionPhotoScannerTest {
         assertEquals(expected, MotionPhotoScanner.findVideoStart(tail))
     }
 
-    @Test
-    fun `临时验证用例-故意失败-稍后删除`() {
-        assertEquals("这条失败是刻意的，用来确认 CI 真的会执行单测", 1, 2)
-    }
-
     // ---------------------------------------------------------------- 辅助
 
     /** 造一段以 JPEG 的 SOI 开头、EOI 结尾的假图片数据。 */
