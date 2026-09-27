@@ -3,8 +3,9 @@ package com.haoli.swipegallery.core.data.motion
 import android.content.Context
 import android.net.Uri
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.io.DataInputStream
 import java.io.File
-import java.io.RandomAccessFile
+import java.io.FileInputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
@@ -18,7 +19,7 @@ import timber.log.Timber
  *
  * 官方规范给的做法是读 XMP：新版看 `Container:Item:Length`，
  * 旧版（Microvideo V1）看 `Camera:MicroVideoOffset`。
- * 但各厂商实现不一致 —— 这正是用户反馈「不同手机品牌不一样」的原因。
+ * 但各厂商实现不一致 —— 这正是「不同手机品牌表现不一样」的原因。
  *
  * 而这两套做法有个**共同前提**：视频是作为 MP4 **追加在主图之后、
  * 且位于文件最末尾**。所以这里反过来做：直接在文件尾部找 MP4 的
@@ -67,9 +68,12 @@ class MotionPhotoExtractor @Inject constructor(
             val tailStart = fileSize - tailLength
             val tail = ByteArray(tailLength)
 
-            RandomAccessFile(pfd.fileDescriptor, "r").use { raf ->
-                raf.seek(tailStart)
-                raf.readFully(tail)
+            // 用 FileInputStream 而不是 RandomAccessFile：
+            // RandomAccessFile 没有接受 FileDescriptor 的构造函数，
+            // 而 FileInputStream 有，且能通过 channel 精确定位。
+            FileInputStream(pfd.fileDescriptor).use { stream ->
+                stream.channel.position(tailStart)
+                DataInputStream(stream).readFully(tail)
             }
 
             val videoOffsetInTail = findVideoStart(tail) ?: return null
@@ -80,14 +84,15 @@ class MotionPhotoExtractor @Inject constructor(
             if (videoLength < MIN_VIDEO_BYTES || videoLength > MAX_VIDEO_BYTES) return null
 
             val outFile = File(cacheDir(), cacheNameFor(parsed))
-            RandomAccessFile(pfd.fileDescriptor, "r").use { raf ->
-                raf.seek(videoStart)
+            FileInputStream(pfd.fileDescriptor).use { stream ->
+                stream.channel.position(videoStart)
+                val input = DataInputStream(stream)
                 outFile.outputStream().use { out ->
                     val buffer = ByteArray(COPY_BUFFER_BYTES)
                     var remaining = videoLength
                     while (remaining > 0L) {
                         val want = minOf(remaining, buffer.size.toLong()).toInt()
-                        val read = raf.read(buffer, 0, want)
+                        val read = input.read(buffer, 0, want)
                         if (read <= 0) break
                         out.write(buffer, 0, read)
                         remaining -= read
@@ -106,7 +111,7 @@ class MotionPhotoExtractor @Inject constructor(
      * 它的 `ftyp` 也就是最后一次出现。
      */
     private fun findVideoStart(tail: ByteArray): Int? {
-        for (i in tail.size - FTYP.length downTo 4) {
+        for (i in tail.size - FTYP.size downTo 4) {
             if (!matchesAt(tail, i, FTYP)) continue
 
             // 紧邻其前的 4 字节 = 盒长度（大端）
@@ -114,8 +119,8 @@ class MotionPhotoExtractor @Inject constructor(
             if (boxSize < MIN_FTYP_BOX || boxSize > MAX_FTYP_BOX) continue
 
             // 紧随其后的 4 字节 = brand
-            if (i + FTYP.length + 4 > tail.size) continue
-            val brand = String(tail, i + FTYP.length, 4, Charsets.US_ASCII)
+            if (i + FTYP.size + 4 > tail.size) continue
+            val brand = String(tail, i + FTYP.size, 4, Charsets.US_ASCII)
             if (brand !in KNOWN_BRANDS) continue
 
             // 命中：视频从盒长度字段开始
