@@ -301,6 +301,11 @@ private fun TriagePager(
                 // 否则会同时响起多个视频的声音
                 isCurrent = page == pagerState.currentPage,
                 onLoadFullImage = onLoadFullImage,
+                // 只有当前页才吃动态照片的播放状态，
+                // 否则相邻页也会跟着一起切到视频
+                motionVideoPath = motionVideoPath.takeIf { page == pagerState.currentPage },
+                onMotionPressed = onMotionPressed,
+                onMotionReleased = onMotionReleased,
             )
         }
     }
